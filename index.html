@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Munich Intel</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f11;
+      color: #e8e8e8;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      padding: 20px 32px;
+      border-bottom: 1px solid #1e1e24;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    header .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #3b82f6;
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
+
+    header span {
+      font-size: 13px;
+      color: #555;
+      margin-left: auto;
+    }
+
+    #chat {
+      flex: 1;
+      width: 100%;
+      max-width: 760px;
+      padding: 32px 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .empty-state {
+      margin: auto;
+      text-align: center;
+      color: #444;
+    }
+
+    .empty-state h2 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .empty-state p {
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .message {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .message.user { align-items: flex-end; }
+    .message.assistant { align-items: flex-start; }
+
+    .bubble {
+      max-width: 85%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .user .bubble {
+      background: #1d4ed8;
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .assistant .bubble {
+      background: #18181b;
+      border: 1px solid #27272a;
+      color: #d4d4d8;
+      border-bottom-left-radius: 4px;
+    }
+
+    .sources {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 0 4px;
+    }
+
+    .source-tag {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 20px;
+      background: #1e1e24;
+      border: 1px solid #2e2e38;
+      color: #888;
+    }
+
+    .source-tag a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .source-tag a:hover { color: #aaa; }
+
+    .thinking {
+      display: flex;
+      gap: 4px;
+      padding: 14px 16px;
+    }
+
+    .thinking span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #555;
+      animation: bounce 1.2s infinite;
+    }
+
+    .thinking span:nth-child(2) { animation-delay: 0.2s; }
+    .thinking span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-6px); }
+    }
+
+    #input-area {
+      width: 100%;
+      max-width: 760px;
+      padding: 16px;
+      padding-bottom: 28px;
+    }
+
+    .input-box {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 16px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 0.15s;
+    }
+
+    .input-box:focus-within {
+      border-color: #3b82f6;
+    }
+
+    #question {
+      background: none;
+      border: none;
+      outline: none;
+      color: #e8e8e8;
+      font-size: 14px;
+      resize: none;
+      min-height: 24px;
+      max-height: 160px;
+      font-family: inherit;
+      line-height: 1.5;
+    }
+
+    #question::placeholder { color: #444; }
+
+    .input-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #company-filter {
+      background: #0f0f11;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      color: #888;
+      font-size: 12px;
+      padding: 5px 10px;
+      outline: none;
+      cursor: pointer;
+      flex: 1;
+    }
+
+    #company-filter:focus { border-color: #3b82f6; }
+
+    #send-btn {
+      background: #1d4ed8;
+      border: none;
+      border-radius: 10px;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    #send-btn:hover { background: #2563eb; }
+    #send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    #send-btn svg {
+      width: 16px;
+      height: 16px;
+      fill: #fff;
+    }
+
+    .error-bubble {
+      background: #2d1515;
+      border: 1px solid #5c2626;
+      color: #f87171;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="dot"></div>
+  <h1>Munich Intel</h1>
+  <span>RAG · llama3.2:3b · BGE-M3</span>
+</header>
+
+<div id="chat">
+  <div class="empty-state">
+    <h2>Ask about Munich startups</h2>
+    <p>What are they building? Who leads them?<br>Filter by company or ask across all of them.</p>
+  </div>
+</div>
+
+<div id="input-area">
+  <div class="input-box">
+    <textarea id="question" rows="1" placeholder="Ask anything about Munich startups…"></textarea>
+    <div class="input-controls">
+      <select id="company-filter">
+        <option value="">All companies</option>
+        <option value="reverion">Reverion</option>
+        <option value="ororatech">OroraTech</option>
+        <option value="blickfeld">Blickfeld</option>
+        <option value="navvis">NavVis</option>
+        <option value="konux">KONUX</option>
+        <option value="merantix">Merantix</option>
+        <option value="1komma5grad">1KOMMA5°</option>
+      </select>
+      <button id="send-btn" title="Send">
+        <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const chat = document.getElementById('chat');
+  const questionEl = document.getElementById('question');
+  const sendBtn = document.getElementById('send-btn');
+  const filterEl = document.getElementById('company-filter');
+
+  function clearEmptyState() {
+    const e = chat.querySelector('.empty-state');
+    if (e) e.remove();
+  }
+
+  function appendMessage(role, content, sources = []) {
+    clearEmptyState();
+    const msg = document.createElement('div');
+    msg.className = `message ${role}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = content;
+    msg.appendChild(bubble);
+
+    if (sources.length) {
+      const sourceRow = document.createElement('div');
+      sourceRow.className = 'sources';
+      const seen = new Set();
+      sources.forEach(({ company, url }) => {
+        const key = url;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const tag = document.createElement('div');
+        tag.className = 'source-tag';
+        tag.innerHTML = `<a href="${url}" target="_blank">${company} ↗</a>`;
+        sourceRow.appendChild(tag);
+      });
+      msg.appendChild(sourceRow);
+    }
+
+    chat.appendChild(msg);
+    chat.scrollTop = chat.scrollHeight;
+    return bubble;
+  }
+
+  function appendThinking() {
+    clearEmptyState();
+    const msg = document.createElement('div');
+    msg.className = 'message assistant';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble thinking';
+    bubble.innerHTML = '<span></span><span></span><span></span>';
+    msg.appendChild(bubble);
+    chat.appendChild(msg);
+    chat.scrollTop = chat.scrollHeight;
+    return msg;
+  }
+
+  async function send() {
+    const question = questionEl.value.trim();
+    if (!question) return;
+
+    appendMessage('user', question);
+    questionEl.value = '';
+    questionEl.style.height = 'auto';
+    sendBtn.disabled = true;
+
+    const thinkingEl = appendThinking();
+
+    const body = { question };
+    const slug = filterEl.value;
+    if (slug) body.company_slug = slug;
+
+    try {
+      const res = await fetch('http://localhost:8000/query/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        thinkingEl.remove();
+        const b = appendMessage('assistant', `Error ${res.status}: ${res.statusText}`);
+        b.classList.add('error-bubble');
+        sendBtn.disabled = false;
+        questionEl.focus();
+        return;
+      }
+
+      thinkingEl.remove();
+
+      // Create the bubble that tokens will stream into
+      clearEmptyState();
+      const msg = document.createElement('div');
+      msg.className = 'message assistant';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      msg.appendChild(bubble);
+      chat.appendChild(msg);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = JSON.parse(line.slice(6));
+
+          if (data.token !== undefined) {
+            bubble.textContent += data.token;
+            chat.scrollTop = chat.scrollHeight;
+          }
+
+          if (data.done && data.sources?.length) {
+            const sourceRow = document.createElement('div');
+            sourceRow.className = 'sources';
+            const seen = new Set();
+            data.sources.forEach(({ company, url }) => {
+              if (seen.has(url)) return;
+              seen.add(url);
+              const tag = document.createElement('div');
+              tag.className = 'source-tag';
+              tag.innerHTML = `<a href="${url}" target="_blank">${company} ↗</a>`;
+              sourceRow.appendChild(tag);
+            });
+            msg.appendChild(sourceRow);
+            chat.scrollTop = chat.scrollHeight;
+          }
+        }
+      }
+    } catch (err) {
+      thinkingEl.remove();
+      const b = appendMessage('assistant', 'Could not reach the API. Is the server running on localhost:8000?');
+      b.classList.add('error-bubble');
+    }
+
+    sendBtn.disabled = false;
+    questionEl.focus();
+  }
+
+  sendBtn.addEventListener('click', send);
+
+  questionEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  questionEl.addEventListener('input', () => {
+    questionEl.style.height = 'auto';
+    questionEl.style.height = questionEl.scrollHeight + 'px';
+  });
+</script>
+</body>
+</html>

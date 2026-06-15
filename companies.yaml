@@ -1,0 +1,64 @@
+companies:
+  - name: Twaice
+    slug: twaice
+    urls:
+      # entire twaice.com domain is Cloudflare-blocked — skipped for Phase 1
+    category: battery-analytics
+    hq: Munich
+    skip: true
+
+  - name: Reverion
+    slug: reverion
+    urls:
+      - https://reverion.com
+      - https://reverion.com/about
+    category: energy
+    hq: Munich
+
+  - name: OroraTech
+    slug: ororatech
+    urls:
+      - https://ororatech.com
+      - https://ororatech.com/about-us
+    category: space-tech
+    hq: Munich
+
+  - name: Blickfeld
+    slug: blickfeld
+    urls:
+      - https://www.blickfeld.com
+      - https://www.blickfeld.com/company
+    category: lidar
+    hq: Munich
+
+  - name: NavVis
+    slug: navvis
+    urls:
+      - https://www.navvis.com
+      - https://www.navvis.com/about
+    category: digital-twins
+    hq: Munich
+
+  - name: KONUX
+    slug: konux
+    urls:
+      - https://www.konux.com
+      - https://www.konux.com/company
+    category: iiot
+    hq: Munich
+
+  - name: Merantix
+    slug: merantix
+    urls:
+      - https://www.merantix.com
+      - https://www.merantix.com/about
+    category: ai-platform
+    hq: Munich
+
+  - name: 1KOMMA5 Grad
+    slug: 1komma5grad
+    urls:
+      - https://1komma5grad.com
+      - https://1komma5grad.com/ueber-uns
+    category: energy
+    hq: Hamburg/Munich
