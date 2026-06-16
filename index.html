@@ -350,7 +350,7 @@
     if (slug) body.company_slug = slug;
 
     try {
-      const res = await fetch('http://localhost:8000/query/stream', {
+      const res = await fetch('/query/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
