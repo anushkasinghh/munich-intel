@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 50
     retrieval_top_k: int = 5
+    # Secret token required in X-Ingest-Token header to call POST /ingest.
+    # Set a random string here and in HF Space secrets. Never leave empty in production.
+    ingest_secret: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

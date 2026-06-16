@@ -1,15 +1,19 @@
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 
 import yaml
 import json
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 from munich_intel.config import settings
 from munich_intel.embedder import load_model
@@ -20,12 +24,16 @@ from munich_intel.scraper import scrape_company
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("Loading embedding model: %s", settings.embedding_model)
     app.state.model = load_model()
     if settings.qdrant_url:
+        logger.info("Connecting to Qdrant Cloud: %s", settings.qdrant_url)
         app.state.qdrant = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     else:
+        logger.info("Connecting to local Qdrant: %s:%s", settings.qdrant_host, settings.qdrant_port)
         app.state.qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
     setup_collection(app.state.qdrant, settings.collection_name)
+    logger.info("Startup complete. Collection: %s", settings.collection_name)
     yield
     app.state.qdrant.close()
 
@@ -70,7 +78,10 @@ class QueryResponse(BaseModel):
 # --- endpoints ---
 
 @app.post("/ingest", response_model=IngestResponse)
-def ingest_endpoint(req: IngestRequest):
+def ingest_endpoint(req: IngestRequest, x_ingest_token: str | None = Header(None)):
+    if not settings.ingest_secret or x_ingest_token != settings.ingest_secret:
+        logger.warning("Rejected /ingest request — missing or invalid token")
+        raise HTTPException(status_code=403, detail="Forbidden")
     config = yaml.safe_load(Path("companies.yaml").read_text())
     companies = config["companies"]
 
@@ -87,11 +98,13 @@ def ingest_endpoint(req: IngestRequest):
         if company.get("skip"):
             skipped.append(company["slug"])
             continue
+        logger.info("Ingesting: %s", company["slug"])
         pages = scrape_company(company)
         pages_scraped += len(pages)
         for page in pages:
             chunks_indexed += ingest(page, app.state.qdrant, settings.collection_name)
 
+    logger.info("Ingest complete: %d pages, %d chunks, skipped=%s", pages_scraped, chunks_indexed, skipped)
     return IngestResponse(pages_scraped=pages_scraped, chunks_indexed=chunks_indexed, skipped=skipped)
 
 
@@ -130,7 +143,8 @@ def health():
     try:
         info = app.state.qdrant.get_collection(settings.collection_name)
         points_count = info.points_count
-    except Exception:
+    except Exception as e:
+        logger.error("Health check: Qdrant unreachable — %s", e)
         points_count = 0
     return {
         "status": "ok",

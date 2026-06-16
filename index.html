@@ -248,7 +248,7 @@
 <header>
   <div class="dot"></div>
   <h1>Munich Intel</h1>
-  <span>RAG · llama3.2:3b · BGE-M3</span>
+  <span>RAG · llama-3.1-8b-instant · BGE-M3</span>
 </header>
 
 <div id="chat">
@@ -416,7 +416,7 @@
       }
     } catch (err) {
       thinkingEl.remove();
-      const b = appendMessage('assistant', 'Could not reach the API. Is the server running on localhost:8000?');
+      const b = appendMessage('assistant', 'Could not reach the API. Try refreshing.');
       b.classList.add('error-bubble');
     }
 
