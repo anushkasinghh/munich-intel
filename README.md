@@ -1,13 +1,3 @@
----
-title: Munich Intel
-emoji: 🏙
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 8000
-pinned: false
----
-
 # Munich Intel
 
 An AI research assistant for Munich startups — scrapes company pages, embeds them with BGE-M3, and answers questions using RAG.

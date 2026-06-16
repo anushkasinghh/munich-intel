@@ -10,8 +10,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0          # full history so HF gets all commits
+          fetch-depth: 0
           lfs: true
+
+      - name: Prepend HuggingFace metadata to README
+        run: |
+          printf '---\ntitle: Munich Intel\nemoji: 🏙\ncolorFrom: blue\ncolorTo: indigo\nsdk: docker\napp_port: 8000\npinned: false\n---\n\n' | cat - README.md > /tmp/hf_readme.md
+          cp /tmp/hf_readme.md README.md
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add README.md
+          git commit -m "Add HuggingFace metadata [skip ci]"
 
       - name: Push to HuggingFace Spaces
         env:
