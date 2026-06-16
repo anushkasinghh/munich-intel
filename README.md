@@ -10,15 +10,18 @@ pinned: false
 
 # Munich Intel
 
-A local AI research assistant for Munich — scrapes, embeds, and queries local knowledge using Ollama + Qdrant. Runs entirely on your machine, no external APIs.
+An AI research assistant for Munich startups — scrapes company pages, embeds them with BGE-M3, and answers questions using RAG.
+
+**Live demo:** https://huggingface.co/spaces/anushkasinghh/munich-intel
 
 ## Stack
 
-- **Ollama** — local LLM inference (llama3.1:8b)
-- **Qdrant** — vector database for semantic search
-- **sentence-transformers** — BGE-M3 dense embeddings (Phase 1; see DECISIONS.md)
-- **FastAPI** — API layer (2 endpoints in Phase 1)
+- **Groq** — LLM inference (llama-3.1-8b-instant, cloud API)
+- **Qdrant Cloud** — hosted vector database (production) / local Docker (dev)
+- **BGE-M3** via sentence-transformers — dense embeddings
+- **FastAPI** — API + streaming chat UI
 - **uv** — dependency management and lockfile
+- **HuggingFace Spaces** — deployment (Docker, free CPU tier)
 
 ## Project Structure
 

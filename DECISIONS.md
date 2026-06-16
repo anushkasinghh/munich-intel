@@ -234,3 +234,36 @@ Tradeoffs made during development. Revisit these when upgrading past the MVP.
 **When to revisit:** If the app grows to multiple services, split into domain-specific settings classes rather than one god-settings object.
 
 ---
+
+## Deployment: HuggingFace Spaces + Qdrant Cloud
+
+**Chosen:** HuggingFace Spaces (Docker, free CPU tier) for the app + Qdrant Cloud (free tier) for the vector DB
+**Rejected:** Vercel, Render, single-VPS docker-compose
+
+**Why:** Vercel is serverless — BGE-M3 takes ~15 seconds to load, which would be paid on every cold request. Render's free tier sleeps after inactivity and doesn't support two containers. A single VPS running both services is the simplest setup but costs money. Splitting across HF Spaces (app) and Qdrant Cloud (vectors) gives a permanently-on, zero-cost deployment: HF free tier has 2 vCPU and 16GB RAM (enough for BGE-M3), and Qdrant Cloud's free tier keeps vectors persistent across app restarts.
+
+**When to revisit:** If the Space restarts too frequently or the 1GB Qdrant free tier fills up. Migrate to a Hetzner VPS (~€4/month) running docker-compose with both services.
+
+---
+
+## Docker: CPU-only PyTorch
+
+**Chosen:** `torch` pinned to `https://download.pytorch.org/whl/cpu` via `[tool.uv.sources]` in `pyproject.toml`
+**Rejected:** default PyTorch from PyPI (installs full CUDA stack)
+
+**Why:** Default `uv install torch` pulls CUDA, cuDNN, and 15+ nvidia-* packages — 4GB of GPU libraries a CPU server never uses. Switching to the CPU wheel shrinks the image from 5.3GB to 1.3GB and cuts HF Spaces build time by ~6 minutes. BGE-M3 on CPU takes ~100ms per query, which is fine for this use case.
+
+**When to revisit:** If you move to a GPU server. Remove the `[tool.uv.sources]` override and re-lock.
+
+---
+
+## Model versioning: revision pin + collection name as schema version
+
+**Chosen:** `EMBEDDING_MODEL_REVISION` env var (HuggingFace commit hash) + collection name encodes model version (`munich_intel`, `munich_intel_v2`, …)
+**Rejected:** no versioning (silently breaks when model weights update)
+
+**Why:** HuggingFace model repos are mutable — weights can change under the same name. If the embedding model changes between indexing and querying, vectors become incompatible and retrieval silently degrades. Pinning to a commit hash freezes the weights. The Qdrant collection name acts as the schema version: when you change the embedding model, create a new collection rather than re-using the old one so old and new vectors coexist during migration.
+
+**When to revisit:** Always pin before production. Get the hash from https://huggingface.co/BAAI/bge-m3/commits/main.
+
+---
