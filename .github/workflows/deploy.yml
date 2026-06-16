@@ -15,12 +15,24 @@ jobs:
 
       - name: Prepend HuggingFace metadata to README
         run: |
-          printf '---\ntitle: Munich Intel\nemoji: 🏙\ncolorFrom: blue\ncolorTo: indigo\nsdk: docker\napp_port: 8000\npinned: false\n---\n\n' | cat - README.md > /tmp/hf_readme.md
+          cat > /tmp/hf_header.md << 'EOF'
+          ---
+          title: Munich Intel
+          emoji: 🏙
+          colorFrom: blue
+          colorTo: indigo
+          sdk: docker
+          app_port: 8000
+          pinned: false
+          ---
+
+          EOF
+          cat /tmp/hf_header.md README.md > /tmp/hf_readme.md
           cp /tmp/hf_readme.md README.md
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
           git add README.md
-          git commit -m "Add HuggingFace metadata [skip ci]"
+          git diff --cached --quiet || git commit -m "Add HuggingFace metadata [skip ci]"
 
       - name: Push to HuggingFace Spaces
         env:
