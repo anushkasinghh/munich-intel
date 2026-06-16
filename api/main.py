@@ -21,7 +21,10 @@ from munich_intel.scraper import scrape_company
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.model = load_model()
-    app.state.qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
+    if settings.qdrant_url:
+        app.state.qdrant = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+    else:
+        app.state.qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
     setup_collection(app.state.qdrant, settings.collection_name)
     yield
     app.state.qdrant.close()
@@ -129,4 +132,12 @@ def health():
         points_count = info.points_count
     except Exception:
         points_count = 0
-    return {"status": "ok", "collection": settings.collection_name, "points_count": points_count}
+    return {
+        "status": "ok",
+        "collection": settings.collection_name,
+        "points_count": points_count,
+        "embedding_model": settings.embedding_model,
+        "embedding_model_revision": settings.embedding_model_revision or "latest",
+        "llm_provider": settings.llm_provider,
+        "groq_model": settings.groq_model if settings.llm_provider == "groq" else None,
+    }

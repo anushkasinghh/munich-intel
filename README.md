@@ -1,3 +1,13 @@
+---
+title: Munich Intel
+emoji: 🏙
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # Munich Intel
 
 A local AI research assistant for Munich — scrapes, embeds, and queries local knowledge using Ollama + Qdrant. Runs entirely on your machine, no external APIs.

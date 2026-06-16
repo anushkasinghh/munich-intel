@@ -1,9 +1,23 @@
-# docker-compose.yml
 services:
   qdrant:
     image: qdrant/qdrant:v1.12.4
     ports:
       - "6333:6333"
-      - "6334:6334"
     volumes:
       - ./data/qdrant_storage:/qdrant/storage
+
+  app:
+    build: .                          # build from Dockerfile in this directory
+    image: munich-intel-app:0.1.0     # version tag — bump when you cut a release
+    ports:
+      - "8000:8000"
+    env_file: .env                    # pass your secrets in from .env
+    environment:
+      - QDRANT_HOST=qdrant           # inside Docker, services talk by name not localhost
+    volumes:
+      - huggingface_cache:/root/.cache/huggingface   # persist the BGE-M3 model download
+    depends_on:
+      - qdrant                        # start qdrant first
+
+volumes:
+  huggingface_cache:                  # named volume so model survives container restarts
