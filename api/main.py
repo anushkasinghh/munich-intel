@@ -12,14 +12,14 @@ from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-
 from munich_intel.config import settings
 from munich_intel.embedder import load_model
 from munich_intel.indexer import ingest, setup_collection
 from munich_intel.pipeline import answer, answer_stream
 from munich_intel.scraper import scrape_company
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
