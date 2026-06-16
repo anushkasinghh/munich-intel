@@ -39,6 +39,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+markers = [
+    "integration: loads real models or external services — run manually, not in CI",
+]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }

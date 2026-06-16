@@ -267,3 +267,36 @@ Tradeoffs made during development. Revisit these when upgrading past the MVP.
 **When to revisit:** Always pin before production. Get the hash from https://huggingface.co/BAAI/bge-m3/commits/main.
 
 ---
+
+## Testing: invariant tests over strategy-specific tests
+
+**Chosen:** tests that verify contracts — no chunk exceeds `chunk_size`, all input words appear in output, vectors are unit-normalized, output count matches input count
+**Rejected:** tests tied to specific counts or exact overlap word positions (e.g. `assert len(chunks) == 2`)
+
+**Why:** Strategy-specific tests break every time you change the implementation, even correctly. Invariant tests survive a complete rewrite — they check *what must always be true* regardless of how chunking or embedding is done. A test that asserts `len(chunks) == 2` for 600 words breaks the moment you tune `chunk_size`. A test that asserts no chunk exceeds `chunk_size` never breaks unless the function is actually wrong.
+
+**When to revisit:** Never for the invariants themselves. Add strategy-specific tests only when you need to lock in exact behavior for a known-stable implementation.
+
+---
+
+## Embedder tests: integration test over mock
+
+**Chosen:** real BGE-M3 model loaded in `tests/test_embedder.py`, marked `@pytest.mark.integration`, run manually before model swaps
+**Rejected:** mock model with `MagicMock` + `fake_encode`
+
+**Why:** A mock that already normalizes vectors makes `test_vectors_are_unit_normalized` pass even if `normalize_embeddings=True` is removed from `embed()` — it tests the mock, not the code. The only test that actually means something for an embedding wrapper is semantic: similar texts should score higher than dissimilar ones. That requires the real model. Since CI only runs ruff (not pytest), the 570MB download never hits CI. Run manually with `uv run pytest tests/test_embedder.py -v -m integration` before any model swap.
+
+**When to revisit:** If CI ever adds a pytest step, exclude integration tests with `-m "not integration"` rather than letting them run on every push.
+
+---
+
+## Pipeline tests: mock retrieve() and generate(), not the clients
+
+**Chosen:** `patch("munich_intel.pipeline.retrieve", return_value=[...])` and `patch("munich_intel.pipeline.generate", ...)` — replace the two functions the pipeline calls, not Qdrant or Groq directly
+**Rejected:** spinning up a real Qdrant instance or making real Groq API calls in tests
+
+**Why:** Pipeline tests check the wiring contract — that `answer()` returns `{"answer": str, "sources": list}`, that `company_name` is renamed to `company` before being returned, that empty retrieval returns the fallback string. None of that requires a real database or LLM. Patching at the function boundary (retrieve/generate) rather than the service boundary (Qdrant/Groq) keeps tests fast and focused. The most valuable test is `test_answer_sources_are_correctly_formatted` — it catches the `company_name → company` key rename breaking, which would silently break the frontend's source display without this test.
+
+**When to revisit:** Phase 2, when re-ranking is added between retrieve() and generate() in pipeline.py — add a test that verifies re-ranked order is passed to generate(), not the original retrieval order.
+
+---
