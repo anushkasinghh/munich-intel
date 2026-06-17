@@ -9,3 +9,4 @@ data/qdrant_storage/
 *.egg-info/
 dist/
 .pytest_cache/
+.ruff_cache/

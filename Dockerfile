@@ -17,7 +17,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 # Copy the rest of the project
 COPY src/ ./src/
 COPY api/ ./api/
-COPY index.html ./
+COPY static/ ./static/
 COPY companies.yaml ./
 COPY scripts/ ./scripts/
 

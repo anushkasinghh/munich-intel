@@ -50,7 +50,7 @@ app.add_middleware(
 
 @app.get("/", response_class=HTMLResponse)
 def ui():
-    return Path("index.html").read_text()
+    return Path("static/index.html").read_text()
 
 
 # --- request / response models ---
