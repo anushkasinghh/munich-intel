@@ -30,7 +30,8 @@ munich-intel/
 │       ├── indexer.py          ← writes to Qdrant
 │       ├── retriever.py        ← queries Qdrant
 │       ├── generator.py        ← calls Groq API
-│       └── pipeline.py         ← retriever + generator = RAG answer
+│       ├── pipeline.py         ← retriever + generator = RAG answer
+│       └── entities.py         ← V2: Pydantic schema for extracted entities (Company, FundingRound, ...)
 ├── api/
 │   └── main.py                 ← FastAPI: /ingest, /query, /query/stream, /health
 ├── scripts/
@@ -38,8 +39,10 @@ munich-intel/
 ├── tests/
 │   ├── test_chunker.py         ← invariant unit tests (CI)
 │   ├── test_embedder.py        ← integration tests, loads real BGE-M3 (manual only)
-│   └── test_pipeline.py        ← wiring contract tests with mocks (CI)
+│   ├── test_pipeline.py        ← wiring contract tests with mocks (CI)
+│   └── test_entities.py        ← V2 entity schema invariant tests (CI)
 ├── companies.yaml              ← data source list, not code
+├── VISION.md                   ← V2 scope, audience, and build order
 ├── DECISIONS.md                ← architecture decision log
 ├── docker-compose.yml          ← Qdrant only
 ├── pyproject.toml
@@ -117,7 +120,7 @@ curl -X POST http://localhost:8000/ingest \
 
 ```bash
 # Unit tests (fast, run in CI)
-uv run pytest tests/test_chunker.py tests/test_pipeline.py -v
+uv run pytest tests/test_chunker.py tests/test_pipeline.py tests/test_entities.py -v
 
 # Integration tests (loads real BGE-M3 model, ~15s — run manually before model swaps)
 uv run pytest tests/test_embedder.py -v -m integration

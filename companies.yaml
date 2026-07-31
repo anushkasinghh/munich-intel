@@ -62,3 +62,120 @@ companies:
       - https://1komma5grad.com/ueber-uns
     category: energy
     hq: Hamburg/Munich
+
+  # --- V2 seed expansion: recently funded (last ~6-18mo as of 2026-07) ---
+
+  - name: Helsing
+    slug: helsing
+    urls:
+      # helsing.ai returns 429 (bot-protected) — skipped like Twaice
+    category: defense-ai
+    hq: Munich
+    funding_note: "€600M 2025"
+    skip: true
+
+  - name: Quantum Systems
+    slug: quantum-systems
+    urls:
+      # quantum-systems.com returns 403 (bot-protected) — skipped like Twaice
+    category: defense-tech
+    hq: Gilching/Munich
+    funding_note: "€340M 2025"
+    skip: true
+
+  - name: Isar Aerospace
+    slug: isar-aerospace
+    urls:
+      - https://www.isaraerospace.com
+      - https://www.isaraerospace.com/about
+    category: space-tech
+    hq: Ottobrunn/Munich
+    funding_note: "€150M 2025"
+
+  - name: Proxima Fusion
+    slug: proxima-fusion
+    urls:
+      - https://www.proximafusion.com
+      - https://www.proximafusion.com/about
+    category: fusion-energy
+    hq: Munich
+    funding_note: "€411M 2025"
+
+  - name: Marvel Fusion
+    slug: marvel-fusion
+    urls:
+      - https://www.marvelfusion.com
+    category: fusion-energy
+    hq: Munich
+    funding_note: "~€113M 2025"
+
+  - name: SpAItial
+    slug: spaitial
+    urls:
+      - https://spaitial.ai
+      - https://spaitial.ai/about
+    category: generative-3d-ai
+    hq: Munich
+    funding_note: "$13M seed 2025"
+
+  - name: Viktor
+    slug: viktor
+    urls:
+      - https://getviktor.com
+      - https://getviktor.com/about
+    category: enterprise-ai-agents
+    hq: Warsaw/Munich
+    funding_note: "€64.7M Series A 2026"
+
+  - name: allO
+    slug: allo
+    urls:
+      - https://allo.restaurant
+      - https://allo.restaurant/about
+    category: restaurant-ai
+    hq: Munich
+    funding_note: "€12M Series A 2026"
+
+  - name: ClearOps
+    slug: clearops
+    urls:
+      - https://www.clearops.com
+      - https://www.clearops.com/about
+    category: industrial-ai
+    hq: Munich
+    funding_note: "€8.6M Series A 2026"
+
+  - name: VoiceLine
+    slug: voiceline
+    urls:
+      - https://www.getvoiceline.com
+      - https://www.getvoiceline.com/about
+    category: voice-ai
+    hq: Munich
+    funding_note: "€10M 2026"
+
+  - name: Microagi
+    slug: microagi
+    urls:
+      - https://www.microagi.ai
+      - https://www.microagi.ai/about
+    category: robotics-data
+    hq: Munich
+    funding_note: "$55M seed 2026"
+
+  - name: Augmented Industries
+    slug: augmented-industries
+    urls:
+      - https://flow-tool.com
+      - https://flow-tool.com/about
+    category: industrial-ai
+    hq: Munich
+    funding_note: "€4.5M pre-seed 2025"
+
+  - name: OCELL
+    slug: ocell
+    urls:
+      - https://ocell.io
+    category: climate-ai
+    hq: Munich
+    funding_note: "€10M 2025"
