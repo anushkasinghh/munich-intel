@@ -20,11 +20,13 @@ munich-intel/
 ├── .github/
 │   └── workflows/ci.yml        ← lint (ruff) + unit tests on every push
 ├── data/
-│   └── raw/                    ← scraped JSON files, gitignored
+│   ├── raw/                    ← scraped JSON files, gitignored
+│   └── entities/                ← V2: extracted entity JSON (e.g. JobPosting), gitignored
 ├── src/
 │   └── munich_intel/
 │       ├── config.py           ← all settings, loaded from .env
-│       ├── scraper.py          ← fetches and cleans HTML
+│       ├── scraper.py          ← fetches and cleans HTML (site/news/careers)
+│       ├── extractor.py        ← V2: LLM extraction of entities from careers pages
 │       ├── chunker.py          ← splits text into indexable pieces
 │       ├── embedder.py         ← wraps BGE-M3
 │       ├── indexer.py          ← writes to Qdrant
@@ -40,7 +42,10 @@ munich-intel/
 │   ├── test_chunker.py         ← invariant unit tests (CI)
 │   ├── test_embedder.py        ← integration tests, loads real BGE-M3 (manual only)
 │   ├── test_pipeline.py        ← wiring contract tests with mocks (CI)
-│   └── test_entities.py        ← V2 entity schema invariant tests (CI)
+│   ├── test_entities.py        ← V2 entity schema invariant tests (CI)
+│   ├── test_scraper_news.py    ← news RSS scraping tests, mocked HTTP (CI)
+│   ├── test_scraper_careers.py ← careers page scraping tests, mocked HTTP (CI)
+│   └── test_extractor.py       ← JobPosting extraction tests, mocked LLM calls (CI)
 ├── companies.yaml              ← data source list, not code
 ├── VISION.md                   ← V2 scope, audience, and build order
 ├── DECISIONS.md                ← architecture decision log

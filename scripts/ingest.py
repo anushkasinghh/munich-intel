@@ -16,6 +16,7 @@ from rich.table import Table
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from munich_intel.config import settings
+from munich_intel.extractor import extract_job_postings
 from munich_intel.indexer import ingest, setup_collection
 from munich_intel.scraper import scrape_company
 
@@ -44,9 +45,11 @@ def main() -> None:
     table.add_column("Status", style="bold")
     table.add_column("Pages", justify="right")
     table.add_column("Chunks", justify="right")
+    table.add_column("Jobs", justify="right")
 
     total_pages = 0
     total_chunks = 0
+    total_jobs = 0
 
     for company in companies:
         # scrape_company() already skips bot-blocked site urls internally while still
@@ -55,10 +58,11 @@ def main() -> None:
         try:
             pages = scrape_company(company)
         except Exception as exc:
-            table.add_row(company["name"], f"[red]scrape error: {exc}[/red]", "0", "0")
+            table.add_row(company["name"], f"[red]scrape error: {exc}[/red]", "0", "0", "0")
             continue
 
         chunks_for_company = 0
+        jobs_for_company = 0
         for page in pages:
             try:
                 n = ingest(page, client, settings.collection_name)
@@ -66,15 +70,23 @@ def main() -> None:
             except Exception as exc:
                 console.print(f"  [red]index error for {page.url}: {exc}[/red]")
 
+            if page.source_type == "careers":
+                try:
+                    jobs_for_company += len(extract_job_postings(page))
+                except Exception as exc:
+                    console.print(f"  [red]job extraction error for {page.url}: {exc}[/red]")
+
         total_pages += len(pages)
         total_chunks += chunks_for_company
+        total_jobs += jobs_for_company
         status = "[green]ok[/green]" if not company.get("skip") else "[yellow]news only (site blocked)[/yellow]"
-        table.add_row(company["name"], status, str(len(pages)), str(chunks_for_company))
+        table.add_row(company["name"], status, str(len(pages)), str(chunks_for_company), str(jobs_for_company))
 
     console.print(table)
     console.print(
-        f"\n[bold]Done.[/bold] {total_pages} page(s), {total_chunks} chunk(s) indexed "
-        f"into [cyan]{settings.collection_name}[/cyan]."
+        f"\n[bold]Done.[/bold] {total_pages} page(s), {total_chunks} chunk(s) indexed, "
+        f"{total_jobs} job posting(s) extracted into [cyan]{settings.collection_name}[/cyan] "
+        f"/ [cyan]data/entities/[/cyan]."
     )
 
 

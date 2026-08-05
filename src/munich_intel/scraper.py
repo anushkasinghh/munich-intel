@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -37,15 +37,32 @@ class ScrapedPage(BaseModel):
     page_text: str
     scraped_at: str
     word_count: int
-    # Distinguishes the company's own site from a news feed, so extract_entities
-    # (V2 step 4) knows whether to look for Company/FundingRound facts or NewsMention items.
-    source_type: Literal["site", "news"] = "site"
+    # Distinguishes the company's own site from a news feed or careers page, so
+    # extract_entities knows whether to look for Company/FundingRound, NewsMention, or
+    # JobPosting facts.
+    source_type: Literal["site", "news", "careers"] = "site"
 
 
 def _clean_html(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
+    text = soup.get_text(separator="\n", strip=True)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def _clean_careers_html(html: str, base_url: str) -> str:
+    # Same as _clean_html, but inlines each link's target next to its visible text
+    # (e.g. "Senior ML Engineer [https://.../jobs/123]") instead of dropping hrefs via
+    # get_text(). Career pages have no fixed layout, so the LLM extractor (not regex)
+    # has to find postings itself — it can only recover a JobPosting.url if the link
+    # survives cleaning.
+    soup = BeautifulSoup(html, "lxml")
+    for tag in soup(["script", "style", "nav", "footer", "header"]):
+        tag.decompose()
+    for a in soup.find_all("a", href=True):
+        href = urljoin(base_url, a["href"])
+        a.replace_with(f"{a.get_text(strip=True)} [{href}]")
     text = soup.get_text(separator="\n", strip=True)
     return re.sub(r"\n{3,}", "\n\n", text)
 
@@ -130,6 +147,31 @@ def scrape_news(company_name: str, company_slug: str, category: str = "") -> Scr
     return page
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(_RETRYABLE),
+)
+def scrape_careers(url: str, company_name: str, company_slug: str, category: str = "") -> ScrapedPage:
+    with httpx.Client(headers=_HEADERS, timeout=10, follow_redirects=True) as client:
+        response = client.get(url)
+        response.raise_for_status()
+
+    text = _clean_careers_html(response.text, url)
+    page = ScrapedPage(
+        company_name=company_name,
+        company_slug=company_slug,
+        category=category,
+        url=url,
+        page_text=text,
+        scraped_at=datetime.now(timezone.utc).isoformat(),
+        word_count=len(text.split()),
+        source_type="careers",
+    )
+    _save(page)
+    return page
+
+
 def scrape_company(company_config: dict) -> list[ScrapedPage]:
     name = company_config["name"]
     slug = company_config["slug"]
@@ -141,5 +183,10 @@ def scrape_company(company_config: dict) -> list[ScrapedPage]:
     # leave bot-blocked companies (Twaice, Helsing, Quantum Systems) with zero data at all.
     if not company_config.get("skip"):
         pages.extend(scrape_page(url, name, slug, category) for url in company_config["urls"])
+    # careers_url is independent of `skip` too — it's often on a separate ATS domain
+    # (Personio, Greenhouse, ...) that isn't bot-blocked even when the main site is.
+    careers_url = company_config.get("careers_url")
+    if careers_url:
+        pages.append(scrape_careers(careers_url, name, slug, category))
     pages.append(scrape_news(name, slug, category))
     return pages

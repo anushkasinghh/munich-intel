@@ -3,6 +3,7 @@ companies:
     slug: twaice
     urls:
       # entire twaice.com domain is Cloudflare-blocked — skipped for Phase 1
+    careers_url: https://www.twaice.com/careers
     category: battery-analytics
     hq: Munich
     skip: true
@@ -12,6 +13,7 @@ companies:
     urls:
       - https://reverion.com
       - https://reverion.com/about
+    careers_url: https://reverion.com/en/career/
     category: energy
     hq: Munich
 
@@ -20,6 +22,7 @@ companies:
     urls:
       - https://ororatech.com
       - https://ororatech.com/about-us
+    careers_url: https://ororatech.com/company/careers
     category: space-tech
     hq: Munich
 
@@ -28,6 +31,8 @@ companies:
     urls:
       - https://www.blickfeld.com
       - https://www.blickfeld.com/company
+    # No dedicated careers page on blickfeld.com itself — jobs are hosted on Personio.
+    careers_url: https://blickfeld.jobs.personio.de/
     category: lidar
     hq: Munich
 
@@ -36,6 +41,7 @@ companies:
     urls:
       - https://www.navvis.com
       - https://www.navvis.com/about
+    careers_url: https://www.navvis.com/company/careers
     category: digital-twins
     hq: Munich
 
@@ -44,6 +50,7 @@ companies:
     urls:
       - https://www.konux.com
       - https://www.konux.com/company
+    careers_url: https://www.konux.com/careers/
     category: iiot
     hq: Munich
 
@@ -52,6 +59,8 @@ companies:
     urls:
       - https://www.merantix.com
       - https://www.merantix.com/about
+    # Merantix itself (not the AI Campus / Momentum / Capital sub-brands) posts via Personio.
+    careers_url: https://merantix.jobs.personio.de/?language=en
     category: ai-platform
     hq: Munich
 
@@ -60,6 +69,8 @@ companies:
     urls:
       - https://1komma5grad.com
       - https://1komma5grad.com/ueber-uns
+    # Company has since rebranded its marketing domain to 1komma5.com; jobs live there.
+    careers_url: https://1komma5.com/en/about-us/jobs/
     category: energy
     hq: Hamburg/Munich
 
@@ -69,6 +80,7 @@ companies:
     slug: helsing
     urls:
       # helsing.ai returns 429 (bot-protected) — skipped like Twaice
+    careers_url: https://helsing.ai/careers
     category: defense-ai
     hq: Munich
     funding_note: "€600M 2025"
@@ -78,6 +90,7 @@ companies:
     slug: quantum-systems
     urls:
       # quantum-systems.com returns 403 (bot-protected) — skipped like Twaice
+    careers_url: https://quantum-systems.com/career-at-quantum-systems/
     category: defense-tech
     hq: Gilching/Munich
     funding_note: "€340M 2025"
@@ -88,6 +101,7 @@ companies:
     urls:
       - https://www.isaraerospace.com
       - https://www.isaraerospace.com/about
+    careers_url: https://isaraerospace.com/career
     category: space-tech
     hq: Ottobrunn/Munich
     funding_note: "€150M 2025"
@@ -97,6 +111,7 @@ companies:
     urls:
       - https://www.proximafusion.com
       - https://www.proximafusion.com/about
+    careers_url: https://www.proximafusion.com/careers
     category: fusion-energy
     hq: Munich
     funding_note: "€411M 2025"
@@ -105,6 +120,8 @@ companies:
     slug: marvel-fusion
     urls:
       - https://www.marvelfusion.com
+    # marvelfusion.com has no dedicated /careers path — postings are hosted on Greenhouse.
+    careers_url: https://job-boards.eu.greenhouse.io/marvelfusion
     category: fusion-energy
     hq: Munich
     funding_note: "~€113M 2025"
@@ -114,6 +131,7 @@ companies:
     urls:
       - https://spaitial.ai
       - https://spaitial.ai/about
+    careers_url: https://spaitial.ai/careers
     category: generative-3d-ai
     hq: Munich
     funding_note: "$13M seed 2025"
@@ -123,6 +141,8 @@ companies:
     urls:
       - https://getviktor.com
       - https://getviktor.com/about
+    # getviktor.com has no dedicated /careers path — postings are hosted on Ashby.
+    careers_url: https://jobs.ashbyhq.com/viktor
     category: enterprise-ai-agents
     hq: Warsaw/Munich
     funding_note: "€64.7M Series A 2026"
@@ -132,6 +152,7 @@ companies:
     urls:
       - https://allo.restaurant
       - https://allo.restaurant/about
+    careers_url: https://allo.restaurant/careers
     category: restaurant-ai
     hq: Munich
     funding_note: "€12M Series A 2026"
@@ -141,6 +162,7 @@ companies:
     urls:
       - https://www.clearops.com
       - https://www.clearops.com/about
+    careers_url: https://www.clearops.com/careers
     category: industrial-ai
     hq: Munich
     funding_note: "€8.6M Series A 2026"
@@ -150,6 +172,8 @@ companies:
     urls:
       - https://www.getvoiceline.com
       - https://www.getvoiceline.com/about
+    # No dedicated careers page found on getvoiceline.com / voiceline.ai (rebrand in
+    # progress) as of 2026-08 — omitted rather than guessing a URL that 404s.
     category: voice-ai
     hq: Munich
     funding_note: "€10M 2026"
@@ -159,6 +183,7 @@ companies:
     urls:
       - https://www.microagi.ai
       - https://www.microagi.ai/about
+    careers_url: https://www.microagi.ai/careers
     category: robotics-data
     hq: Munich
     funding_note: "$55M seed 2026"
@@ -168,6 +193,7 @@ companies:
     urls:
       - https://flow-tool.com
       - https://flow-tool.com/about
+    careers_url: https://flow-tool.com/careers
     category: industrial-ai
     hq: Munich
     funding_note: "€4.5M pre-seed 2025"
@@ -176,6 +202,7 @@ companies:
     slug: ocell
     urls:
       - https://ocell.io
+    careers_url: https://www.ocell.io/en-us/career
     category: climate-ai
     hq: Munich
     funding_note: "€10M 2025"
