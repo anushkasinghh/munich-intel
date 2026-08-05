@@ -49,10 +49,8 @@ def main() -> None:
     total_chunks = 0
 
     for company in companies:
-        if company.get("skip"):
-            table.add_row(company["name"], "[yellow]skipped[/yellow]", "-", "-")
-            continue
-
+        # scrape_company() already skips bot-blocked site urls internally while still
+        # fetching news for them — don't bypass it here or those companies get zero data.
         console.print(f"Scraping [cyan]{company['name']}[/cyan]...")
         try:
             pages = scrape_company(company)
@@ -70,7 +68,8 @@ def main() -> None:
 
         total_pages += len(pages)
         total_chunks += chunks_for_company
-        table.add_row(company["name"], "[green]ok[/green]", str(len(pages)), str(chunks_for_company))
+        status = "[green]ok[/green]" if not company.get("skip") else "[yellow]news only (site blocked)[/yellow]"
+        table.add_row(company["name"], status, str(len(pages)), str(chunks_for_company))
 
     console.print(table)
     console.print(

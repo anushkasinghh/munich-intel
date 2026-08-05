@@ -92,12 +92,11 @@ def ingest_endpoint(req: IngestRequest, x_ingest_token: str | None = Header(None
 
     pages_scraped = 0
     chunks_indexed = 0
-    skipped: list[str] = []
+    # Companies whose own site is bot-blocked — scrape_company() still fetches news for
+    # them, so this is reported for visibility, not treated as "no data collected".
+    skipped: list[str] = [c["slug"] for c in companies if c.get("skip")]
 
     for company in companies:
-        if company.get("skip"):
-            skipped.append(company["slug"])
-            continue
         logger.info("Ingesting: %s", company["slug"])
         pages = scrape_company(company)
         pages_scraped += len(pages)
