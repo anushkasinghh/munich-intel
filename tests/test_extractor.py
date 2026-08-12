@@ -1,7 +1,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from munich_intel.extractor import extract_job_postings
+from munich_intel.entities import RoundType
+from munich_intel.extractor import extract_funding_rounds, extract_job_postings, extract_news_mentions
 from munich_intel.scraper import ScrapedPage
 
 
@@ -76,6 +77,40 @@ def test_extract_job_postings_skips_malformed_entries():
     assert postings[0].title == "Valid Posting"
 
 
+def test_extract_job_postings_skips_video_embed_urls():
+    # e.g. Isar Aerospace's "meet your future colleagues" section — employee testimonial
+    # clips whose only link is a youtube-nocookie.com embed, not an application link.
+    raw = [
+        {"title": "Team Leader Composites", "url": "https://www.youtube-nocookie.com/embed/3uR5L8IpcZo"},
+        {"title": "Valid Posting", "url": "https://reverion.com/jobs/1"},
+    ]
+    with (
+        patch("munich_intel.extractor._raw_postings", return_value=raw),
+        patch("munich_intel.extractor._save"),
+    ):
+        postings = extract_job_postings(_page())
+
+    assert len(postings) == 1
+    assert postings[0].title == "Valid Posting"
+
+
+def test_extract_job_postings_strips_leftover_link_marker_from_location():
+    raw = [
+        {
+            "title": "Valid Posting",
+            "url": "https://reverion.com/jobs/1",
+            "location": "Munich [https://reverion.com/careers#munich]",
+        }
+    ]
+    with (
+        patch("munich_intel.extractor._raw_postings", return_value=raw),
+        patch("munich_intel.extractor._save"),
+    ):
+        postings = extract_job_postings(_page())
+
+    assert postings[0].location == "Munich"
+
+
 def test_extract_job_postings_saves_results():
     raw = [{"title": "Senior ML Engineer"}]
     with (
@@ -84,7 +119,7 @@ def test_extract_job_postings_saves_results():
     ):
         postings = extract_job_postings(_page())
 
-    mock_save.assert_called_once_with(postings, "reverion")
+    mock_save.assert_called_once_with(postings, "reverion", "jobs")
 
 
 def test_raw_postings_parses_json_object_from_groq():
@@ -121,3 +156,146 @@ def test_raw_postings_returns_empty_on_invalid_json():
         result = _raw_postings("some careers page text")
 
     assert result == []
+
+
+def _news_page(**overrides) -> ScrapedPage:
+    fields = {
+        "company_name": "Reverion",
+        "company_slug": "reverion",
+        "category": "energy",
+        "url": "https://news.google.com/rss/search?q=%22Reverion%22",
+        "page_text": (
+            "Title: Reverion raises Series B\n"
+            "Link: https://news.example.com/reverion-series-b\n"
+            "Published: Mon, 01 Jan 2026 00:00:00 GMT\n"
+            "Source: TechCrunch"
+            "\n---\n"
+            "Title: Reverion opens Munich office\n"
+            "Link: https://news.example.com/reverion-office\n"
+            "Published: Tue, 02 Jan 2026 00:00:00 GMT\n"
+            "Source: Example News"
+        ),
+        "scraped_at": "2026-01-01T00:00:00Z",
+        "word_count": 20,
+        "source_type": "news",
+    }
+    fields.update(overrides)
+    return ScrapedPage(**fields)
+
+
+def test_extract_news_mentions_returns_empty_for_non_news_page():
+    page = _news_page(source_type="site")
+    assert extract_news_mentions(page) == []
+
+
+def test_extract_news_mentions_returns_empty_for_blank_page_text():
+    page = _news_page(page_text="")
+    assert extract_news_mentions(page) == []
+
+
+def test_extract_news_mentions_parses_blocks_without_calling_llm():
+    # No _chat_json/_groq_client patch — proves this path never touches the LLM.
+    with patch("munich_intel.extractor._save"):
+        mentions = extract_news_mentions(_news_page())
+
+    assert len(mentions) == 2
+    assert mentions[0].company_slug == "reverion"
+    assert mentions[0].title == "Reverion raises Series B"
+    assert str(mentions[0].url) == "https://news.example.com/reverion-series-b"
+    assert mentions[0].source == "TechCrunch"
+    assert mentions[0].published_on.isoformat() == "2026-01-01"
+    assert mentions[1].title == "Reverion opens Munich office"
+
+
+def test_extract_news_mentions_skips_block_with_unparseable_date():
+    page = _news_page(page_text="Title: No date here\nLink: https://news.example.com/x\nSource: Some Source")
+    with patch("munich_intel.extractor._save"):
+        mentions = extract_news_mentions(page)
+
+    assert mentions == []
+
+
+def test_extract_news_mentions_saves_results():
+    with patch("munich_intel.extractor._save") as mock_save:
+        mentions = extract_news_mentions(_news_page())
+
+    mock_save.assert_called_once_with(mentions, "reverion", "news")
+
+
+def test_extract_funding_rounds_returns_empty_for_non_news_page():
+    page = _news_page(source_type="site")
+    assert extract_funding_rounds(page) == []
+
+
+def test_extract_funding_rounds_returns_empty_for_blank_page_text():
+    page = _news_page(page_text="")
+    assert extract_funding_rounds(page) == []
+
+
+def test_extract_funding_rounds_builds_entities_from_llm_output():
+    raw = [
+        {
+            "round_type": "series-b",
+            "announced_on": "2026-01-01",
+            "amount_eur": 20000000,
+            "investor_names": ["Acme Ventures"],
+            "source_url": "https://news.example.com/reverion-series-b",
+        }
+    ]
+    with (
+        patch("munich_intel.extractor._raw_funding_rounds", return_value=raw),
+        patch("munich_intel.extractor._save"),
+    ):
+        rounds = extract_funding_rounds(_news_page())
+
+    assert len(rounds) == 1
+    assert rounds[0].company_slug == "reverion"
+    assert rounds[0].round_type == RoundType.SERIES_B
+    assert rounds[0].amount_eur == 20000000
+    assert rounds[0].investor_names == ["Acme Ventures"]
+
+
+def test_extract_funding_rounds_skips_malformed_entries():
+    raw = [{"round_type": "series-b"}]  # missing required announced_on/source_url
+    with (
+        patch("munich_intel.extractor._raw_funding_rounds", return_value=raw),
+        patch("munich_intel.extractor._save"),
+    ):
+        rounds = extract_funding_rounds(_news_page())
+
+    assert rounds == []
+
+
+def test_extract_funding_rounds_saves_results():
+    raw = [
+        {
+            "round_type": "seed",
+            "announced_on": "2026-01-01",
+            "source_url": "https://news.example.com/reverion-seed",
+        }
+    ]
+    with (
+        patch("munich_intel.extractor._raw_funding_rounds", return_value=raw),
+        patch("munich_intel.extractor._save") as mock_save,
+    ):
+        rounds = extract_funding_rounds(_news_page())
+
+    mock_save.assert_called_once_with(rounds, "reverion", "funding")
+
+
+def test_raw_funding_rounds_parses_json_object_from_groq():
+    from munich_intel.extractor import _raw_funding_rounds
+
+    mock_message = MagicMock(content=json.dumps({"funding_rounds": [{"round_type": "seed"}]}))
+    mock_choice = MagicMock(message=mock_message)
+    mock_completion = MagicMock(choices=[mock_choice])
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = mock_completion
+
+    with (
+        patch("munich_intel.extractor.settings.llm_provider", "groq"),
+        patch("munich_intel.extractor._groq_client", return_value=mock_client),
+    ):
+        result = _raw_funding_rounds("some news page text")
+
+    assert result == [{"round_type": "seed"}]

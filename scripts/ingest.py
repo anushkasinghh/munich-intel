@@ -17,7 +17,7 @@ from rich.table import Table
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from munich_intel.config import settings
-from munich_intel.extractor import extract_job_postings
+from munich_intel.extractor import extract_funding_rounds, extract_job_postings, extract_news_mentions
 from munich_intel.indexer import ingest, setup_collection
 from munich_intel.scraper import scrape_company
 
@@ -52,10 +52,14 @@ def main() -> None:
     table.add_column("Pages", justify="right")
     table.add_column("Chunks", justify="right")
     table.add_column("Jobs", justify="right")
+    table.add_column("News", justify="right")
+    table.add_column("Funding", justify="right")
 
     total_pages = 0
     total_chunks = 0
     total_jobs = 0
+    total_news = 0
+    total_funding = 0
 
     for company in companies:
         # scrape_company() already skips bot-blocked site urls internally while still
@@ -64,11 +68,13 @@ def main() -> None:
         try:
             pages = scrape_company(company)
         except Exception as exc:
-            table.add_row(company["name"], f"[red]scrape error: {exc}[/red]", "0", "0", "0")
+            table.add_row(company["name"], f"[red]scrape error: {exc}[/red]", "0", "0", "0", "0", "0")
             continue
 
         chunks_for_company = 0
         jobs_for_company = 0
+        news_for_company = 0
+        funding_for_company = 0
         for page in pages:
             try:
                 n = ingest(page, client, settings.collection_name)
@@ -82,9 +88,21 @@ def main() -> None:
                 except Exception as exc:
                     console.print(f"  [red]job extraction error for {page.url}: {exc}[/red]")
 
+            if page.source_type == "news":
+                try:
+                    news_for_company += len(extract_news_mentions(page))
+                except Exception as exc:
+                    console.print(f"  [red]news extraction error for {page.url}: {exc}[/red]")
+                try:
+                    funding_for_company += len(extract_funding_rounds(page))
+                except Exception as exc:
+                    console.print(f"  [red]funding extraction error for {page.url}: {exc}[/red]")
+
         total_pages += len(pages)
         total_chunks += chunks_for_company
         total_jobs += jobs_for_company
+        total_news += news_for_company
+        total_funding += funding_for_company
 
         # scrape_company() now isolates site/careers/news, so a partial result (fewer
         # pages than configured sources) means one of them failed — check the log above
@@ -100,13 +118,21 @@ def main() -> None:
             status = f"[yellow]partial ({len(pages)}/{expected}, see log)[/yellow]"
         else:
             status = "[green]ok[/green]"
-        table.add_row(company["name"], status, str(len(pages)), str(chunks_for_company), str(jobs_for_company))
+        table.add_row(
+            company["name"],
+            status,
+            str(len(pages)),
+            str(chunks_for_company),
+            str(jobs_for_company),
+            str(news_for_company),
+            str(funding_for_company),
+        )
 
     console.print(table)
     console.print(
         f"\n[bold]Done.[/bold] {total_pages} page(s), {total_chunks} chunk(s) indexed, "
-        f"{total_jobs} job posting(s) extracted into [cyan]{settings.collection_name}[/cyan] "
-        f"/ [cyan]data/entities/[/cyan]."
+        f"{total_jobs} job posting(s), {total_news} news mention(s), {total_funding} funding round(s) "
+        f"extracted into [cyan]{settings.collection_name}[/cyan] / [cyan]data/entities/[/cyan]."
     )
 
 

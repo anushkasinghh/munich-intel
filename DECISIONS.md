@@ -290,6 +290,50 @@ Tradeoffs made during development. Revisit these when upgrading past the MVP.
 
 ---
 
+## Scraper: isolate site/careers/news failures per-source, not per-company
+
+**Chosen:** each source (site urls, careers, news) wrapped in its own try/except inside `scrape_company()`, logged and skipped independently
+**Rejected:** one try/except around the whole company in `ingest.py`
+
+**Why:** Site/careers/news are meant to be independent — a bot-blocked domain shouldn't cost you its news coverage too — but the code only isolated them in config, not in execution. One source raising an exception silently killed every source scraped after it in the same function call. Found via Twaice: a Cloudflare-blocked `/careers` fetch was silently zeroing out its news as well, even though news comes from an entirely separate, unblocked source (Google News RSS).
+
+**When to revisit:** Never for this pattern — always isolate independent I/O sources. Revisit if a fourth source type is added; make sure it gets its own try/except too.
+
+---
+
+## Entity extraction: parse NewsMention deterministically, reserve the LLM for FundingRound
+
+**Chosen:** `extract_news_mentions()` splits `scraper._clean_rss`'s fixed Title/Link/Published/Source blocks with plain string parsing — no LLM call. `extract_funding_rounds()` is the only news-page function that calls an LLM, to classify *which* articles describe a new funding round.
+**Rejected:** one combined LLM call per news page returning both NewsMention and FundingRound rows
+
+**Why:** The RSS feed already arrives fully structured — that's why `_clean_rss` keeps it as one block per article instead of collapsing it to plain text. There's nothing for an LLM to infer for basic mention data (title/link/date/source), so spending a call on it adds cost, latency, and a fabrication surface for zero benefit. Funding classification is the one genuinely subjective task (does this headline describe a NEW raise, and what round/amount/investors?) — the only place an LLM earns its keep on a news page.
+
+**When to revisit:** If Google News RSS ever changes its feed format, `_parse_news_blocks()` needs to change with it — same coupling `_clean_rss` already has to that format.
+
+---
+
+## Extractor: minimum-content and video-embed guards around the LLM call
+
+**Chosen:** `MIN_CAREERS_WORD_COUNT` skips the LLM call entirely on JS-only shell pages; a `_VIDEO_HOSTS` check strips postings whose only link is a YouTube/Vimeo embed after the LLM call
+**Rejected:** trusting the system prompt alone ("skip navigation links, benefits copy, testimonials...")
+
+**Why:** Observed both failure modes in real scraped data. Augmented Industries' careers page is a 13-word JS shell ("enable JavaScript to run this app") — given that, the LLM hallucinated three fake postings with `example.com` URLs instead of reporting nothing found. Isar Aerospace's careers page has a "meet your future colleagues" employee-testimonial section with video embeds; the LLM classified the video captions as open roles despite an explicit prompt instruction not to. Prompt wording alone isn't reliable enough on a small/fast model (`llama-3.1-8b-instant`) — cheap deterministic guards catch what the prompt doesn't.
+
+**When to revisit:** If job-posting precision still isn't good enough after these guards — e.g. ClearOps's FAQ and interview-process copy is still occasionally misclassified because its real job links live behind a JS-rendered Personio subdomain the static scraper can't see at all. The next fix there is ATS-aware scraping (hit Personio/Greenhouse's public listing APIs directly) rather than more prompt tuning.
+
+---
+
+## Extractor: retry LLM calls on transient Groq errors
+
+**Chosen:** `tenacity` retry (3 attempts, exponential backoff) around `_chat_json()` for `RateLimitError`, `APIConnectionError`, `APITimeoutError`, `InternalServerError`
+**Rejected:** single attempt — lose the page's extraction on any transient failure
+
+**Why:** Same rationale as the existing scraper HTTP retry decision above. Groq's free tier rate-limits and occasionally 5xxs. Without a retry, one blip permanently drops a company's job/funding data until the next full ingest run (which can hit the same blip again).
+
+**When to revisit:** Never for the retry itself. Groq's 413 "request too large" (tokens-per-minute limit) errors are deliberately NOT retried — retrying doesn't help when the payload itself exceeds the limit. Seen on companies with heavy news coverage (VoiceLine, Isar Aerospace); the real fix is truncating or chunking news text before the funding-extraction call, not yet implemented.
+
+---
+
 ## Pipeline tests: mock retrieve() and generate(), not the clients
 
 **Chosen:** `patch("munich_intel.pipeline.retrieve", return_value=[...])` and `patch("munich_intel.pipeline.generate", ...)` — replace the two functions the pipeline calls, not Qdrant or Groq directly
