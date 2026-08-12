@@ -5,6 +5,7 @@ Does not require FastAPI to be running.
 """
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -24,6 +25,11 @@ console = Console()
 
 
 def main() -> None:
+    # scrape_company() logs per-source failures (bot-blocked site, JS-only page, etc.)
+    # as warnings instead of raising — without this they'd only surface via Python's
+    # unformatted last-resort stderr handler.
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
     parser = argparse.ArgumentParser(description="Ingest Munich startup data into Qdrant.")
     parser.add_argument("--company", metavar="SLUG", help="Ingest a single company by slug.")
     args = parser.parse_args()
@@ -79,7 +85,21 @@ def main() -> None:
         total_pages += len(pages)
         total_chunks += chunks_for_company
         total_jobs += jobs_for_company
-        status = "[green]ok[/green]" if not company.get("skip") else "[yellow]news only (site blocked)[/yellow]"
+
+        # scrape_company() now isolates site/careers/news, so a partial result (fewer
+        # pages than configured sources) means one of them failed — check the log above
+        # for which. Reflect that here instead of trusting the static `skip` flag.
+        expected = (
+            (0 if company.get("skip") else len(company.get("urls") or []))
+            + (1 if company.get("careers_url") else 0)
+            + 1  # news is always attempted
+        )
+        if not pages:
+            status = "[red]scrape failed[/red]"
+        elif len(pages) < expected:
+            status = f"[yellow]partial ({len(pages)}/{expected}, see log)[/yellow]"
+        else:
+            status = "[green]ok[/green]"
         table.add_row(company["name"], status, str(len(pages)), str(chunks_for_company), str(jobs_for_company))
 
     console.print(table)

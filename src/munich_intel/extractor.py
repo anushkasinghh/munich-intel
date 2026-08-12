@@ -11,8 +11,9 @@ from functools import lru_cache
 from pathlib import Path
 
 import ollama
-from groq import Groq
+from groq import APIConnectionError, APITimeoutError, Groq, InternalServerError, RateLimitError
 from pydantic import ValidationError
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from munich_intel.config import settings
 from munich_intel.entities import JobPosting
@@ -21,6 +22,11 @@ from munich_intel.scraper import ScrapedPage
 logger = logging.getLogger(__name__)
 
 ENTITIES_DIR = Path("data/entities")
+
+# Below this, a page is a JS-only shell ("enable JavaScript to run this app") rather
+# than real content — observed the LLM hallucinate full fake postings (example.com
+# URLs, invented cities) when given text that thin instead of reporting nothing found.
+MIN_CAREERS_WORD_COUNT = 25
 
 _SYSTEM_PROMPT = """\
 You extract open job postings from the text of a company's careers page. The text \
@@ -43,9 +49,16 @@ def _groq_client() -> Groq:
     return Groq(api_key=settings.groq_api_key)
 
 
-def _raw_postings(page_text: str) -> list[dict]:
+# Groq's free tier rate-limits and occasionally 5xxs — retry those like the scraper
+# retries network errors, rather than losing the whole page's extraction to one blip.
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((RateLimitError, APIConnectionError, APITimeoutError, InternalServerError)),
+)
+def _chat_json(system_prompt: str, page_text: str) -> dict:
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": page_text},
     ]
     if settings.llm_provider == "groq":
@@ -60,11 +73,14 @@ def _raw_postings(page_text: str) -> list[dict]:
         content = resp["message"]["content"]
 
     try:
-        data = json.loads(content)
+        return json.loads(content)
     except json.JSONDecodeError:
-        logger.warning("Job posting extraction returned invalid JSON, skipping")
-        return []
-    return data.get("postings", [])
+        logger.warning("Extraction returned invalid JSON, skipping")
+        return {}
+
+
+def _raw_postings(page_text: str) -> list[dict]:
+    return _chat_json(_SYSTEM_PROMPT, page_text).get("postings", [])
 
 
 def _save(postings: list[JobPosting], company_slug: str) -> None:
@@ -75,7 +91,7 @@ def _save(postings: list[JobPosting], company_slug: str) -> None:
 
 
 def extract_job_postings(page: ScrapedPage) -> list[JobPosting]:
-    if page.source_type != "careers" or not page.page_text.strip():
+    if page.source_type != "careers" or page.word_count < MIN_CAREERS_WORD_COUNT:
         return []
 
     postings = []

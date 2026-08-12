@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,6 +10,8 @@ import httpx
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
+logger = logging.getLogger(__name__)
 
 DATA_DIR = Path("data/raw")
 
@@ -178,15 +181,28 @@ def scrape_company(company_config: dict) -> list[ScrapedPage]:
     category = company_config.get("category", "")
 
     pages = []
-    # `skip` marks the company's own domain as bot-blocked (Cloudflare/429/403) — it says
-    # nothing about Google News, which is a separate, unblocked source. Skipping it too would
-    # leave bot-blocked companies (Twaice, Helsing, Quantum Systems) with zero data at all.
+    # Site, careers, and news are independent sources — one failing (e.g. a bot-blocked
+    # domain) must not prevent the others from being scraped and saved. Each is caught on
+    # its own instead of letting one exception skip everything after it in this function.
     if not company_config.get("skip"):
-        pages.extend(scrape_page(url, name, slug, category) for url in company_config["urls"])
+        for url in company_config["urls"]:
+            try:
+                pages.append(scrape_page(url, name, slug, category))
+            except Exception:
+                logger.warning("Site scrape failed for %s (%s)", name, url, exc_info=True)
+
     # careers_url is independent of `skip` too — it's often on a separate ATS domain
     # (Personio, Greenhouse, ...) that isn't bot-blocked even when the main site is.
     careers_url = company_config.get("careers_url")
     if careers_url:
-        pages.append(scrape_careers(careers_url, name, slug, category))
-    pages.append(scrape_news(name, slug, category))
+        try:
+            pages.append(scrape_careers(careers_url, name, slug, category))
+        except Exception:
+            logger.warning("Careers scrape failed for %s (%s)", name, careers_url, exc_info=True)
+
+    try:
+        pages.append(scrape_news(name, slug, category))
+    except Exception:
+        logger.warning("News scrape failed for %s", name, exc_info=True)
+
     return pages

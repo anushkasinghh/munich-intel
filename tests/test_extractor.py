@@ -13,7 +13,7 @@ def _page(**overrides) -> ScrapedPage:
         "url": "https://reverion.com/careers",
         "page_text": "Senior ML Engineer [https://reverion.com/jobs/123]",
         "scraped_at": "2026-01-01T00:00:00Z",
-        "word_count": 4,
+        "word_count": 50,  # above MIN_CAREERS_WORD_COUNT; the LLM call is mocked so page_text itself is a short stand-in
         "source_type": "careers",
     }
     fields.update(overrides)
@@ -26,7 +26,15 @@ def test_extract_job_postings_returns_empty_for_non_careers_page():
 
 
 def test_extract_job_postings_returns_empty_for_blank_page_text():
-    page = _page(page_text="   ")
+    page = _page(page_text="   ", word_count=0)
+    assert extract_job_postings(page) == []
+
+
+def test_extract_job_postings_returns_empty_for_js_shell_page():
+    # A page thin enough to be a JS-only shell ("enable JavaScript...") rather than
+    # real content — the LLM shouldn't even be asked, since it's prone to hallucinating
+    # postings on input this sparse instead of reporting nothing found.
+    page = _page(page_text="You must enable JavaScript to run this app.", word_count=8)
     assert extract_job_postings(page) == []
 
 
