@@ -344,3 +344,14 @@ Tradeoffs made during development. Revisit these when upgrading past the MVP.
 **When to revisit:** Phase 2, when re-ranking is added between retrieve() and generate() in pipeline.py — add a test that verifies re-ranked order is passed to generate(), not the original retrieval order.
 
 ---
+
+## Graph: build Investor nodes ad hoc from FundingRound.investor_names, don't persist them
+
+**Chosen:** `graph.py`'s `build_graph()` dedups `FundingRound.investor_names` strings (normalized: stripped, lowercased) into `Investor` nodes at graph-build time
+**Rejected:** a persisted `data/entities/{slug}_investors.json` file, written by the extractor like the other three entity types
+
+**Why:** `entities.py` already defines an `Investor` pydantic model (graph-ready by design, per its own docstring), but nothing populates it — `FundingRound.investor_names` is just a list of strings. Persisting Investor as its own extraction step would mean another LLM call (or a second pass over the same funding-round text) before the graph even exists. Building the node in-memory from data already on hand costs nothing and is trivially re-derivable, so there's no need to persist it — this can change later without touching existing entity files.
+
+**When to revisit:** If investor identity needs to survive independently of any one funding round (e.g. an investor detail page, or co-investment clique analysis — parked in VISION.md), promote this to a real extraction step with its own persisted file. Also worth revisiting because investor_names is empty on all but one of the 25 real funding rounds extracted so far — the funding-round LLM prompt rarely fills it in, so today's investor graph is close to empty regardless of where the nodes come from.
+
+---

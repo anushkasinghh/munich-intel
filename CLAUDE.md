@@ -22,8 +22,18 @@ tradeoffs, [README.md](README.md) for setup and project structure.
   RSS blocks `scraper._clean_rss` already produces.
 - `FundingRound` extraction: done, LLM-based — the one genuinely inferential task on
   a news page (deciding which articles describe a new raise).
-- Not started: graph build (`networkx`), snapshot mechanism (append, timestamped),
-  eval harness for the 4-beat momentum question arc in VISION.md.
+- Graph build: done. `graph.py`'s `build_graph()` turns `companies.yaml` +
+  `data/entities/*.json` into an `nx.DiGraph` — Company/FundingRound/JobPosting/
+  NewsMention/Investor nodes, typed edges (`RAISED`, `INVESTED_IN`, `POSTED`,
+  `MENTIONED_IN`). `Investor` nodes are built ad hoc from `FundingRound.investor_names`
+  (deduped by normalized name) — nothing persists Investor as its own entity file yet.
+  `scripts/build_graph.py` prints a sanity-check summary;
+  `scripts/visualize_graph.py` renders a pannable/zoomable SVG to `static/graph.html`
+  (not yet wired into `api/main.py` — that's VISION step 8, after the eval harness).
+  On the real data: 1208 nodes, 1192 edges, but only 1 investor node — funding-round
+  extraction rarely captures `investor_names` in practice, worth revisiting.
+- Not started: snapshot mechanism (append, timestamped), eval harness for the 4-beat
+  momentum question arc in VISION.md.
 - `companies.yaml` has 21 companies. VISION.md's own build order says finish steps
   1–6 (extraction -> graph -> eval) on this set before scaling company count further.
 
