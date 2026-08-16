@@ -10,6 +10,7 @@ hallucination risk, no cost. The one genuinely inferential task left is deciding
 
 import json
 import logging
+from datetime import datetime
 from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from pathlib import Path
@@ -140,6 +141,23 @@ def _save(entities: list[BaseModel], company_slug: str, suffix: str) -> None:
     path.write_text(json.dumps(payload, indent=2))
 
 
+def _save_jobs(postings: list[JobPosting], company_slug: str) -> None:
+    """Merge into the existing file instead of overwriting it.
+
+    Career pages rarely state a real `posted_on` (see JobPosting docstring in
+    entities.py), so `scraped_at` — the date we first saw a listing — is the only
+    signal momentum questions ("did postings rise after a funding round?") can use.
+    That signal only survives if re-running the pipeline adds new listings rather
+    than replacing the file each time, so existing rows win on URL collision.
+    """
+    ENTITIES_DIR.mkdir(parents=True, exist_ok=True)
+    path = ENTITIES_DIR / f"{company_slug}_jobs.json"
+    existing = [JobPosting(**row) for row in json.loads(path.read_text())] if path.exists() else []
+    seen_urls = {str(p.url) for p in existing}
+    merged = existing + [p for p in postings if str(p.url) not in seen_urls]
+    path.write_text(json.dumps([e.model_dump(mode="json") for e in merged], indent=2))
+
+
 def _parse_news_blocks(page_text: str) -> list[dict]:
     """Split scraper._clean_rss's "Key: value" blocks back into per-article dicts."""
     blocks = []
@@ -162,6 +180,7 @@ def extract_job_postings(page: ScrapedPage) -> list[JobPosting]:
     for raw in _raw_postings(page.page_text):
         raw = dict(raw)
         raw["company_slug"] = page.company_slug
+        raw["scraped_at"] = datetime.fromisoformat(page.scraped_at).date().isoformat()
 
         url = raw.get("url")
         if url and urlparse(url).hostname in _VIDEO_HOSTS:
@@ -184,7 +203,7 @@ def extract_job_postings(page: ScrapedPage) -> list[JobPosting]:
             logger.warning("Skipping malformed job posting for %s: %r", page.company_slug, raw)
             continue
 
-    _save(postings, page.company_slug, "jobs")
+    _save_jobs(postings, page.company_slug)
     return postings
 
 

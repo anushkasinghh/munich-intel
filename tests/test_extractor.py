@@ -43,7 +43,7 @@ def test_extract_job_postings_builds_entities_from_llm_output():
     raw = [{"title": "Senior ML Engineer", "url": "https://reverion.com/jobs/123", "posted_on": "2026-01-01", "location": "Munich"}]
     with (
         patch("munich_intel.extractor._raw_postings", return_value=raw),
-        patch("munich_intel.extractor._save"),
+        patch("munich_intel.extractor._save_jobs"),
     ):
         postings = extract_job_postings(_page())
 
@@ -57,7 +57,7 @@ def test_extract_job_postings_falls_back_to_page_url_when_llm_omits_url():
     raw = [{"title": "Backend Engineer", "url": None}]
     with (
         patch("munich_intel.extractor._raw_postings", return_value=raw),
-        patch("munich_intel.extractor._save"),
+        patch("munich_intel.extractor._save_jobs"),
     ):
         postings = extract_job_postings(_page())
 
@@ -69,7 +69,7 @@ def test_extract_job_postings_skips_malformed_entries():
     raw = [{"url": "https://reverion.com/jobs/1"}, {"title": "Valid Posting"}]  # first is missing required title
     with (
         patch("munich_intel.extractor._raw_postings", return_value=raw),
-        patch("munich_intel.extractor._save"),
+        patch("munich_intel.extractor._save_jobs"),
     ):
         postings = extract_job_postings(_page())
 
@@ -86,7 +86,7 @@ def test_extract_job_postings_skips_video_embed_urls():
     ]
     with (
         patch("munich_intel.extractor._raw_postings", return_value=raw),
-        patch("munich_intel.extractor._save"),
+        patch("munich_intel.extractor._save_jobs"),
     ):
         postings = extract_job_postings(_page())
 
@@ -104,7 +104,7 @@ def test_extract_job_postings_strips_leftover_link_marker_from_location():
     ]
     with (
         patch("munich_intel.extractor._raw_postings", return_value=raw),
-        patch("munich_intel.extractor._save"),
+        patch("munich_intel.extractor._save_jobs"),
     ):
         postings = extract_job_postings(_page())
 
@@ -115,11 +115,71 @@ def test_extract_job_postings_saves_results():
     raw = [{"title": "Senior ML Engineer"}]
     with (
         patch("munich_intel.extractor._raw_postings", return_value=raw),
-        patch("munich_intel.extractor._save") as mock_save,
+        patch("munich_intel.extractor._save_jobs") as mock_save_jobs,
     ):
         postings = extract_job_postings(_page())
 
-    mock_save.assert_called_once_with(postings, "reverion", "jobs")
+    mock_save_jobs.assert_called_once_with(postings, "reverion")
+
+
+def test_extract_job_postings_stamps_scraped_at_from_page_scrape_time():
+    # posted_on is almost never available from the source page (see JobPosting
+    # docstring); scraped_at is what momentum questions rely on instead, so it must
+    # come from the page's own scrape time, not e.g. today's date.
+    raw = [{"title": "Senior ML Engineer", "url": "https://reverion.com/jobs/123"}]
+    with (
+        patch("munich_intel.extractor._raw_postings", return_value=raw),
+        patch("munich_intel.extractor._save_jobs"),
+    ):
+        postings = extract_job_postings(_page(scraped_at="2026-03-14T09:00:00Z"))
+
+    assert postings[0].scraped_at.isoformat() == "2026-03-14"
+
+
+def test_save_jobs_keeps_existing_row_on_url_collision(tmp_path):
+    from munich_intel.entities import JobPosting
+    from munich_intel.extractor import _save_jobs
+
+    with patch("munich_intel.extractor.ENTITIES_DIR", tmp_path):
+        existing_path = tmp_path / "reverion_jobs.json"
+        existing_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "company_slug": "reverion",
+                        "title": "Senior ML Engineer",
+                        "url": "https://reverion.com/jobs/123",
+                        "scraped_at": "2026-01-01",
+                    }
+                ]
+            )
+        )
+
+        new_postings = [
+            JobPosting(
+                company_slug="reverion",
+                title="Senior ML Engineer (retitled)",
+                url="https://reverion.com/jobs/123",  # same URL as the existing row
+                scraped_at="2026-03-14",
+            ),
+            JobPosting(
+                company_slug="reverion",
+                title="Backend Engineer",
+                url="https://reverion.com/jobs/456",  # new URL
+                scraped_at="2026-03-14",
+            ),
+        ]
+        _save_jobs(new_postings, "reverion")
+
+        saved = json.loads(existing_path.read_text())
+
+    assert len(saved) == 2
+    by_url = {row["url"]: row for row in saved}
+    # The pre-existing row's first-seen date and title win — a re-scrape shouldn't
+    # erase when a listing was actually first observed.
+    assert by_url["https://reverion.com/jobs/123"]["scraped_at"] == "2026-01-01"
+    assert by_url["https://reverion.com/jobs/123"]["title"] == "Senior ML Engineer"
+    assert by_url["https://reverion.com/jobs/456"]["scraped_at"] == "2026-03-14"
 
 
 def test_raw_postings_parses_json_object_from_groq():

@@ -102,6 +102,7 @@ def build_graph(companies_path: Path = COMPANIES_PATH, entities_dir: Path = ENTI
                 kind="job",
                 title=job.title,
                 posted_on=job.posted_on.isoformat() if job.posted_on else None,
+                scraped_at=job.scraped_at.isoformat(),
                 location=job.location,
             )
             graph.add_edge(company_id, job_id, edge_type="POSTED")

@@ -355,3 +355,14 @@ Tradeoffs made during development. Revisit these when upgrading past the MVP.
 **When to revisit:** If investor identity needs to survive independently of any one funding round (e.g. an investor detail page, or co-investment clique analysis — parked in VISION.md), promote this to a real extraction step with its own persisted file. Also worth revisiting because investor_names is empty on all but one of the 25 real funding rounds extracted so far — the funding-round LLM prompt rarely fills it in, so today's investor graph is close to empty regardless of where the nodes come from.
 
 ---
+
+## JobPosting gets a `scraped_at` first-seen date + append-on-save, instead of a full snapshot mechanism
+
+**Chosen:** `JobPosting.scraped_at` (required, stamped from `ScrapedPage.scraped_at` at extraction time) plus `extractor._save_jobs()`, which merges new postings into the existing `{slug}_jobs.json` by URL rather than overwriting it — an existing row's URL wins, so its original `scraped_at` and fields survive a re-scrape, and only genuinely new URLs get appended
+**Rejected:** VISION.md step 5's "append a timestamped run" — a full snapshot mechanism that copies the whole graph/entity set on every run
+
+**Why:** VISION.md's build order put a snapshot mechanism (step 5) before the eval harness (step 6), reasoning that the momentum arc needs to compare state over time. But `FundingRound.announced_on` and `NewsMention.published_on` are already real, reliable dates (funding is a dated event; news RSS carries publish dates) — a single graph snapshot already answers beats 1 and 3 of the arc. The only place a time signal was actually missing is `JobPosting`: checked the real extracted data and only 1 of 77 postings has a real `posted_on` — career pages essentially never state one. So the only entity that needed a "when did we observe this" mechanism was `JobPosting`, and a per-row first-seen date achieves that without duplicating the whole graph on every run. `NewsMention`/`FundingRound` still overwrite their files per run, unchanged — that's intentional, not an oversight, since they don't need it.
+
+**When to revisit:** If beat 4 ("does activity fade after a spike?") ends up needing more than job-posting counts over time — e.g. tracking whether a `NewsMention` or `FundingRound` set itself changes shape across runs — extend the same append-and-dedup pattern to those save paths rather than reaching for a full timestamped-snapshot mechanism. Also revisit if a listing can legitimately change URL (re-posted under a new link) — today that reads as a brand-new posting with a fresh `scraped_at`, which is the correct behavior for "when did we first see this specific listing" but would double-count in a "how many total roles" metric.
+
+---

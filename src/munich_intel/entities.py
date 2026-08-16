@@ -54,6 +54,11 @@ class JobPosting(BaseModel):
     url: HttpUrl
     posted_on: date | None = None
     location: str | None = None
+    # `posted_on` is almost never available (career pages rarely state it — see
+    # DECISIONS.md). `scraped_at` is the fallback signal for "is this listing new":
+    # the date we first saw it, set by extractor._save_jobs on first sight and kept
+    # unchanged on later re-scrapes rather than overwritten.
+    scraped_at: date
 
 
 class NewsMention(BaseModel):

@@ -11,13 +11,18 @@ about whether Munich AI/deep-tech momentum is real. See [VISION.md](VISION.md) f
 scope and build order, [DECISIONS.md](DECISIONS.md) for architecture rationale and
 tradeoffs, [README.md](README.md) for setup and project structure.
 
-## Current V2 state (as of 2026-08-12)
+## Current V2 state (as of 2026-08-16)
 
 - Scraping (site/careers/news): done. `scrape_company()` isolates each source — one
   failing (e.g. a bot-blocked domain) no longer kills the others.
 - `JobPosting` extraction: done, LLM-based, with guards against thin/JS-shell pages
   and video-embed false positives. Precision is still imperfect on some page layouts
-  (see below).
+  (see below). Each posting now carries a required `scraped_at` date, stamped from
+  the page's scrape time — the fallback signal for "is this listing new" since
+  `posted_on` is populated in only 1 of 77 real postings (career pages rarely state
+  one). `extractor._save_jobs()` merges new postings into `data/entities/{slug}_jobs.json`
+  by URL instead of overwriting it, so a re-scrape appends newly-seen postings and
+  preserves each existing one's original `scraped_at` (see DECISIONS.md).
 - `NewsMention` extraction: done, deterministic — no LLM call, just parses the
   RSS blocks `scraper._clean_rss` already produces.
 - `FundingRound` extraction: done, LLM-based — the one genuinely inferential task on
@@ -32,8 +37,13 @@ tradeoffs, [README.md](README.md) for setup and project structure.
   (not yet wired into `api/main.py` — that's VISION step 8, after the eval harness).
   On the real data: 1208 nodes, 1192 edges, but only 1 investor node — funding-round
   extraction rarely captures `investor_names` in practice, worth revisiting.
-- Not started: snapshot mechanism (append, timestamped), eval harness for the 4-beat
-  momentum question arc in VISION.md.
+- VISION.md step 5 ("snapshot mechanism") is covered for the one entity that
+  actually needed it — see the `JobPosting.scraped_at` note above and DECISIONS.md
+  for why a full timestamped-graph-snapshot mechanism wasn't necessary.
+  `NewsMention`/`FundingRound` still overwrite per run, by design (they already
+  carry reliable dates).
+- Not started: eval harness for the 4-beat momentum question arc in VISION.md
+  (step 6) — the next step.
 - `companies.yaml` has 21 companies. VISION.md's own build order says finish steps
   1–6 (extraction -> graph -> eval) on this set before scaling company count further.
 

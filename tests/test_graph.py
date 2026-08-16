@@ -60,6 +60,7 @@ def small_dataset(tmp_path):
                     "url": "https://acme.example.com/jobs/1",
                     "posted_on": None,
                     "location": "Munich",
+                    "scraped_at": "2026-01-01",
                 }
             ]
         )
