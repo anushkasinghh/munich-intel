@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
     llm_provider: str = "groq"  # "groq" | "ollama"
     groq_api_key: str = ""
-    groq_model: str = "llama-3.1-8b-instant"
+    groq_model: str = "openai/gpt-oss-20b"
     chunk_size: int = 512
     chunk_overlap: int = 50
     retrieval_top_k: int = 5
