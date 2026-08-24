@@ -21,7 +21,11 @@ class Settings(BaseSettings):
     groq_model: str = "openai/gpt-oss-20b"
     chunk_size: int = 512
     chunk_overlap: int = 50
-    retrieval_top_k: int = 5
+    # chunk_size counts words, so a retrieved chunk averages ~1150 tokens. At k=5 a
+    # single query asked Groq for ~12800 tokens and 413'd against the free tier's
+    # 8000 TPM budget. k=2 leaves room for the answer. Revisit once eval can measure
+    # what the lower coverage costs.
+    retrieval_top_k: int = 2
     # Secret token required in X-Ingest-Token header to call POST /ingest.
     # Set a random string here and in HF Space secrets. Never leave empty in production.
     ingest_secret: str = ""
