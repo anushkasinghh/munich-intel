@@ -42,8 +42,17 @@ tradeoffs, [README.md](README.md) for setup and project structure.
   for why a full timestamped-graph-snapshot mechanism wasn't necessary.
   `NewsMention`/`FundingRound` still overwrite per run, by design (they already
   carry reliable dates).
-- Not started: eval harness for the 4-beat momentum question arc in VISION.md
-  (step 6) — the next step.
+- Eval harness (VISION.md step 6): a thin first slice is done — jobs only, 5
+  companies, no LLM calls, no network. See [EVAL_DESIGN.md](EVAL_DESIGN.md) for the
+  scope argument and the 2026-09-01 baseline. `src/munich_intel/eval/metrics.py` is
+  pure scoring (URL-keyed P/R/F1, field accuracy), `eval/datasets.py` loads gold and
+  predictions through `entities.JobPosting`, `scripts/eval_jobs.py` prints the tables.
+  Gold lives in `data/eval/gold_jobs/{slug}.json`, causes in `data/eval/error_tags.yaml`.
+  Headline: posting-level precision 0.47 — but bimodal. On ATS careers pages
+  (Greenhouse/Personio) the extractor makes zero confirmed errors; on non-ATS pages
+  23 of 23 postings are fabrications. That is the case for ATS-aware scraping.
+  The 4-beat momentum question arc is still not evaluated — that needs the news and
+  funding entities, and a judge, both deliberately out of this slice's scope.
 - `companies.yaml` has 21 companies. VISION.md's own build order says finish steps
   1–6 (extraction -> graph -> eval) on this set before scaling company count further.
 
@@ -62,6 +71,15 @@ tradeoffs, [README.md](README.md) for setup and project structure.
   copy with no real per-job links, so the LLM has nothing solid to work from. The
   next real fix is ATS-aware scraping (hit Personio/Greenhouse's public listing
   APIs directly for companies that use them) rather than more prompt tuning.
+  The eval now quantifies this — see the baseline in EVAL_DESIGN.md.
+- **`extractor._save_jobs` never retires a closed listing.** Merging by URL preserves
+  `scraped_at` (which is why it merges), but a posting that disappears from the
+  careers page stays in `data/entities/` forever, so the job count only ever rises.
+  The eval catches three of these. Momentum questions read that count, so this needs
+  a `last_seen_at` field before the graph is trusted for trend claims.
+- **`data/raw/` keeps only the newest scrape per URL** (files are hash-named by URL,
+  so a re-scrape overwrites). That makes some eval misses unattributable: there is no
+  way to check what a careers page said at extraction time.
 - **Groq free-tier TPM limit (6000 tokens/min)** can 413 `extract_funding_rounds`
   for companies with heavy news coverage (seen on VoiceLine, Isar Aerospace — their
   Google News RSS feed alone exceeds the per-request budget). Not retried on

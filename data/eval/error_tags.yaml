@@ -1,0 +1,55 @@
+# Why each false positive / false negative is wrong. {url: tag}
+#
+# Filled in by hand from the FP/FN list `scripts/eval_jobs.py` prints, by reading the
+# careers page_text in data/raw/ for each company. The vocabulary was invented while
+# labelling, not decided in advance (EVAL_DESIGN.md).
+#
+# Two distinct families live here, and keeping them apart is the whole point:
+#
+#   1. Real extraction failures — the LLM turned non-jobs into JobPostings. These are
+#      the extraction backlog, and ATS-aware scraping is the fix.
+#   2. Date skew — data/entities/ was extracted on 2026-08-12, the gold set is labelled
+#      from pages scraped 2026-08-21. Job boards changed in between. These are not
+#      extractor errors and must not be counted as such.
+
+# --- 1. Real extraction failures ---------------------------------------------------
+
+# ClearOps: the "See Open Positions ↗" / "View Open Roles ↗" link to the Personio job
+# board, extracted as a posting titled "Open roles". A link to a list of jobs is not a
+# job. The real listings are inside a JS embed the static scraper never renders.
+https://clearops.jobs.personio.de/: ats-board-link-as-job
+
+# ClearOps: 14 postings, all page furniture — "Ready to join?", "Diversity, Equality
+# and Inclusion at ClearOps", and the four numbered hiring-process steps ("1. Pre
+# interview (30 mins)"). The page contains zero real listings, so the LLM, asked for
+# jobs, returned headings.
+https://www.clearops.com/careers: page-heading-as-job
+
+# Isar Aerospace: 8 postings, none real. 4 are captions on YouTube employee-testimonial
+# embeds (a person's job title, not an opening); 3 are location anchors ("Kiruna,
+# Sweden-based openings", #kiruna); 1 ("Senior ML Engineer") appears nowhere in the
+# page text at all. Tagged by the dominant cause — the video-embed guard (_VIDEO_HOSTS)
+# does not catch these because the caption text sits outside the embed element.
+https://isaraerospace.com/career: video-caption-as-job
+
+# --- 2. Date skew (not extractor errors) -------------------------------------------
+
+# Present in data/entities/ from the 2026-08-12 extraction, gone from the 2026-08-21
+# page. `extractor._save_jobs` merges rather than overwrites (by design, to preserve
+# scraped_at), so closed listings accumulate and score as false positives forever.
+https://job-boards.eu.greenhouse.io/marvelfusion/jobs/4765377101: listing-closed-since-extraction
+https://job-boards.eu.greenhouse.io/marvelfusion/jobs/4923398101: listing-closed-since-extraction
+https://merantix.jobs.personio.de/job/2618237: listing-closed-since-extraction
+
+# Carry a "New" badge on the 2026-08-21 page, so they demonstrably did not exist when
+# extraction last ran. The extractor never had a chance to find them.
+https://job-boards.eu.greenhouse.io/marvelfusion/jobs/4947986101: listing-added-after-extraction
+https://job-boards.eu.greenhouse.io/marvelfusion/jobs/4954006101: listing-added-after-extraction
+
+# On the 2026-08-21 page with no "New" badge. Cannot be attributed: either they were
+# added between the two dates, or they were on the 2026-08-12 page and the extractor
+# missed them. data/raw/ keeps only the latest scrape per URL, so the earlier page text
+# is gone and there is no way to tell. Archiving raw pages per scrape would close this.
+https://job-boards.eu.greenhouse.io/marvelfusion/jobs/4707598101: snapshot-drift-unverifiable
+https://job-boards.eu.greenhouse.io/marvelfusion/jobs/4949821101: snapshot-drift-unverifiable
+https://merantix.jobs.personio.de/job/2756691: snapshot-drift-unverifiable
