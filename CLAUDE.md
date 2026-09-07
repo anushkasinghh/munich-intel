@@ -53,17 +53,25 @@ tradeoffs, [README.md](README.md) for setup and project structure.
   23 of 23 postings are fabrications. That is the case for ATS-aware scraping.
   The 4-beat momentum question arc is still not evaluated — that needs the news and
   funding entities, and a judge, both deliberately out of this slice's scope.
+- Retrieval index (verified 2026-09-07): Qdrant Cloud collection `munich_intel`
+  holds 173 chunks over 74 distinct URLs and 21 companies, all scraped 2026-08-21.
+  bge-m3, 1024-dim, cosine; `chunk_size=512` *words* (~700 tokens), overlap 50,
+  `retrieval_top_k=2`. Payload keys are company_name, company_slug, url, chunk_text,
+  chunk_index, scraped_at, category — note `ScrapedPage.source_type` exists
+  (site/news/careers) but `indexer.ingest()` does not write it, so news pages
+  cannot be filtered or down-weighted at query time. `data/raw/` holds all 74
+  pages *with* source_type, so a re-ingest can add it without re-scraping.
 - `companies.yaml` has 21 companies. VISION.md's own build order says finish steps
   1–6 (extraction -> graph -> eval) on this set before scaling company count further.
 
 ## Known issues to be aware of
 
-- **Embedding pipeline is broken in this environment.** `EMBEDDING_MODEL_REVISION=`
-  (blank, not unset) in `.env` makes `sentence-transformers` try to resolve a
-  revision over the network on every `load_model()` call, which fails here even
-  though the model itself is already cached locally (`OSError: We couldn't connect
-  to huggingface.co...`). Every ingest run has been silently producing 0 indexed
-  chunks as a result. Unrelated to entity extraction, not yet fixed.
+- ~~Embedding pipeline is broken in this environment.~~ **Fixed.** The cause was
+  `EMBEDDING_MODEL_REVISION=` (blank, not unset) in `.env`, which made
+  `sentence-transformers` resolve a revision over the network on every
+  `load_model()` call. The key is gone from `.env`, `settings.embedding_model_revision`
+  resolves to `None`, the model loads from the local cache and returns 1024-dim
+  vectors. Verified 2026-09-07.
 - **Job-posting extraction has a real precision ceiling** that prompt tuning and
   guards (`MIN_CAREERS_WORD_COUNT`, `_VIDEO_HOSTS`) only partly close. ClearOps's
   actual job listings live behind a JS-rendered Personio subdomain the static
