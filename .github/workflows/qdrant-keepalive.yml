@@ -1,0 +1,22 @@
+name: Keep Qdrant Cloud awake
+
+on:
+  schedule:
+    # Every 2 days — well inside Qdrant Cloud's free-tier inactivity pause window.
+    - cron: "0 6 */2 * *"
+  workflow_dispatch: {}  # lets you trigger it manually from the Actions tab to test
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Qdrant Cloud cluster
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "api-key: ${{ secrets.QDRANT_API_KEY }}" \
+            "${{ secrets.QDRANT_URL }}/collections")
+          echo "Qdrant responded with HTTP $status"
+          if [ "$status" != "200" ]; then
+            echo "::error::Qdrant Cloud did not return 200 — cluster may be paused or the URL/key is stale."
+            exit 1
+          fi
