@@ -27,6 +27,10 @@ def retrieve(
         {
             "chunk_text": hit.payload["chunk_text"],
             "company_name": hit.payload["company_name"],
+            # The stable identifier: display names drift between scrapes, slugs are
+            # what companies.yaml and every entity file agree on. The retrieval eval
+            # counts distinct companies per result set with it.
+            "company_slug": hit.payload["company_slug"],
             "url": hit.payload["url"],
             "score": hit.score,
         }
