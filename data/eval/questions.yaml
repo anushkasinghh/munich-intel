@@ -12,8 +12,15 @@
 #   aggregation     EXPECTED TO FAIL — a count over the corpus is not a passage
 #                   sitting in it. Kept to size the gap the graph work later fills.
 #
-# A question with an empty relevant_urls is skipped by the CLI and listed as
-# labelling backlog. It is never scored as zero.
+# expects_empty: true marks a NEGATIVE CONTROL — a question the corpus genuinely
+# cannot answer, where the right behaviour is to return nothing useful. It takes no
+# relevant_urls (supplying both is rejected at load). These are not scored on recall;
+# they measure whether a relevance threshold is possible at all. Cosine scores here
+# sit in 0.41-0.65 for everything, so if an unanswerable question scores as high as
+# an answerable one, no cutoff can separate them — that is failure mode 4, measured.
+#
+# A question with an empty relevant_urls and no expects_empty is skipped by the CLI
+# and listed as labelling backlog. It is never scored as zero.
 #
 # COPY URLS VERBATIM from the "url" field of the data/raw/*.json files. Do not type
 # them from memory. normalize_url tolerates a trailing slash, host case, a query
@@ -25,26 +32,40 @@
 #   python -c "import json,glob; [print(d['source_type'], d['url']) for f in
 #     glob.glob('data/raw/*.json') for d in [json.load(open(f))]
 #     if d['company_slug']=='marvel-fusion']"
+#
+# ---------------------------------------------------------------------------
+# COMPOSITION NOTE — why these questions and not others
+#
+# The set is built to be able to FAIL a plausible-but-wrong change. Phase 3a adds
+# source_type to the payload, which makes "prefer site pages, drop news" an easy and
+# tempting filter. An earlier draft of this file would have rewarded exactly that:
+# ~20 of its questions wanted a site page, 4 could only be answered from news, and
+# none wanted a careers page. Dropping news would have scored as a clear win while
+# breaking every hiring and recent-events answer in the app.
+#
+# So the set now deliberately includes:
+#   - 3 questions whose correct answer IS a careers page (ororatech/navvis/isar)
+#   - 2 recency questions where news is right even though a site page exists
+#     (isar-spectrum-launch, proxima-funding) — the earlier news-only questions
+#     worked only because those companies lack a site page, which tests
+#     availability, not preference
+#   - 2 negative controls, so "returns something confident for anything" is visible
+#
+# Two questions were cut for being unlabellable rather than hard: an "AI software
+# companies" question (15 of 21 companies mention AI/ML — any answer key is
+# arguable, so it would have measured label agreement, not retrieval) and a
+# "robotics" one (no clean answer set; the top match was MicroAGI, whose only real
+# text is news because its site and careers pages are 1-word JS shells).
+#
+# Four companies appear in no question: allo, viktor, clearops, augmented-industries.
+# That is deliberate — they are the distractor pool, and two of them (allo, viktor)
+# have among the largest chunk counts in the index, so they are what a diversity
+# metric has to compete against.
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Probed live against the index (the four measured failure modes)
+# single-company — site pages
 # ---------------------------------------------------------------------------
-
-- id: fusion-companies
-  question: "Which Munich startups are working on nuclear fusion?"
-  kind: multi-company
-  relevant_urls: []
-  notes: >-
-    Failure mode 1. Returns marvel-fusion at ranks 1-6, proxima-fusion first at
-    rank 7. At k=2 the answer can never name both.
-
-- id: compare-proxima-marvel
-  question: "Compare Proxima Fusion and Marvel Fusion."
-  kind: comparison
-  relevant_urls: []
-  notes: >-
-    Failure mode 2. Returns two Proxima chunks and zero Marvel at k=2.
-    Label both companies' site pages; recall of 0.5 here means a one-sided answer.
 
 - id: what-is-konux
   question: "What is Konux?"
@@ -53,6 +74,46 @@
   notes: >-
     Failure mode 3. A Google News RSS headline dump ranks 1st; konux.com/company
     is 3rd, outside a k=2 cutoff. The canonical case for source_type filtering.
+
+- id: ororatech-wildfire
+  question: "How does OroraTech detect wildfires?"
+  kind: single-company
+  relevant_urls: []
+  notes: Richest site page in the corpus (2882 words). Should be the easy case.
+
+- id: reverion-technology
+  question: "What technology does Reverion use for its power plants?"
+  kind: single-company
+  relevant_urls: []
+  notes: Balanced page shape — site 718 / news 622 / careers 666.
+
+- id: voiceline-product
+  question: "What does VoiceLine's sales documentation tool do?"
+  kind: single-company
+  relevant_urls: []
+  notes: No careers page. site 378 vs news 1269 — news outweighs the real page 3:1.
+
+- id: spaitial-3d
+  question: "What is Spaitial's approach to 3D scene generation?"
+  kind: single-company
+  relevant_urls: []
+  notes: Thin site page (167 words), careers is a 23-word shell.
+
+- id: 1komma5-energy
+  question: "What does 1Komma5Grad offer homeowners?"
+  kind: single-company
+  relevant_urls: []
+  notes: Largest site page after OroraTech (1117); news is unusually thin (225).
+
+- id: merantix-what
+  question: "What is Merantix and how does it work with startups?"
+  kind: single-company
+  relevant_urls: []
+  notes: Venture-studio model; tiny site page (136) against 1041 words of news.
+
+# ---------------------------------------------------------------------------
+# single-company — answerable only from news (no site page exists)
+# ---------------------------------------------------------------------------
 
 - id: what-is-helsing
   question: "What is Helsing and what do they build?"
@@ -76,50 +137,6 @@
     Only ONE page in the whole index (news, 848 words). The cleanest test of
     whether a single relevant page can be surfaced at all.
 
-- id: munich-space-companies
-  question: "Which Munich companies work on space or satellite technology?"
-  kind: multi-company
-  relevant_urls: []
-  notes: >-
-    isar-aerospace and ororatech at minimum. Second diversity test, on a pair with
-    very different page shapes (Isar news-heavy, OroraTech site-heavy at 2882 words).
-
-# ---------------------------------------------------------------------------
-# single-company — spread across data shapes
-# ---------------------------------------------------------------------------
-
-- id: ororatech-wildfire
-  question: "How does OroraTech detect wildfires?"
-  kind: single-company
-  relevant_urls: []
-  notes: Richest site page in the corpus (2882 words). Should be the easy case.
-
-- id: reverion-technology
-  question: "What technology does Reverion use for its power plants?"
-  kind: single-company
-  relevant_urls: []
-  notes: Balanced page shape — site 718 / news 622 / careers 666.
-
-- id: navvis-indoor-mapping
-  question: "What is NavVis's indoor mapping product?"
-  kind: single-company
-  relevant_urls: []
-  notes: Site page is smaller (506) than its careers page (939) — tests crowding.
-
-- id: blickfeld-lidar
-  question: "What kind of lidar sensors does Blickfeld build?"
-  kind: single-company
-  relevant_urls: []
-  notes: >-
-    site and news have identical word counts (703) — likely near-duplicate text.
-    Worth watching whether both chunks occupy the top k redundantly.
-
-- id: voiceline-product
-  question: "What does VoiceLine's sales documentation tool do?"
-  kind: single-company
-  relevant_urls: []
-  notes: No careers page. site 378 vs news 1269 — news outweighs the real page 3:1.
-
 - id: microagi-what
   question: "What is MicroAGI building?"
   kind: single-company
@@ -128,33 +145,82 @@
     JS shell: site and careers are 1 word each. Only news (742) carries content.
     If this is unanswerable, that is a scraping finding, not a retrieval one.
 
-- id: spaitial-3d
-  question: "What is Spaitial's approach to 3D scene generation?"
-  kind: single-company
-  relevant_urls: []
-  notes: Thin site page (167 words), careers is a 23-word shell.
+# ---------------------------------------------------------------------------
+# single-company — news is correct DESPITE a site page existing
+#
+# The guard against over-filtering. Unlike the four above, these companies have
+# real site pages, so a "prefer site, drop news" change would answer them from the
+# wrong source and these questions would catch it.
+# ---------------------------------------------------------------------------
 
-- id: ocell-forestry
-  question: "How does Ocell use satellite data for forestry?"
+- id: isar-spectrum-launch
+  question: "What happened with Isar Aerospace's Spectrum rocket launch?"
   kind: single-company
   relevant_urls: []
-  notes: Small, evenly-sized pages across all three sources.
+  notes: >-
+    A specific recent event. isaraerospace.com exists (371 words) but is marketing
+    copy; the launch is only in the news feed (2723 words). Label the news page.
 
-- id: 1komma5-energy
-  question: "What does 1Komma5Grad offer homeowners?"
+- id: proxima-funding
+  question: "How much funding has Proxima Fusion raised?"
   kind: single-company
   relevant_urls: []
-  notes: Largest site page after OroraTech (1117); news is unusually thin (225).
+  notes: >-
+    Funding amounts live in news, not on the company site (365 words). Pairs with
+    most-funded-company: this one IS answerable from a passage, that one is not.
 
-- id: merantix-what
-  question: "What is Merantix and how does it work with startups?"
+# ---------------------------------------------------------------------------
+# single-company — careers pages are the correct answer
+#
+# 19 careers pages are indexed and nothing else in this set tests them. Without
+# these, a filter that down-weights everything but site pages would score as an
+# improvement while making the app unable to answer any hiring question.
+# ---------------------------------------------------------------------------
+
+- id: ororatech-roles
+  question: "What roles is OroraTech hiring for?"
   kind: single-company
   relevant_urls: []
-  notes: Venture-studio model; tiny site page (136) against 1041 words of news.
+  notes: >-
+    Largest careers page in the corpus (1210 words), ATS-backed. Note the page is
+    partly a pointer to ororatech.com/company/careers — label what is indexed.
+
+- id: navvis-hiring
+  question: "Is NavVis hiring, and for what kind of positions?"
+  kind: single-company
+  relevant_urls: []
+  notes: >-
+    Careers page (939) is nearly twice the site page (506) — the one company where
+    the careers page is the dominant source. Text includes "Open positions".
+
+- id: isar-aerospace-jobs
+  question: "What jobs are open at Isar Aerospace?"
+  kind: single-company
+  relevant_urls: []
+  notes: >-
+    Careers page is 1108 words with no per-job links — the page the jobs eval
+    showed producing 8 fabricated postings. Retrieval gold is still "this is the
+    right page to surface"; whether it lists jobs usefully is the extractor's problem.
 
 # ---------------------------------------------------------------------------
 # multi-company — the diversity tests
 # ---------------------------------------------------------------------------
+
+- id: fusion-companies
+  question: "Which Munich startups are working on nuclear fusion?"
+  kind: multi-company
+  relevant_urls: []
+  notes: >-
+    Failure mode 1. Returns marvel-fusion at ranks 1-6, proxima-fusion first at
+    rank 7. At k=2 the answer can never name both.
+
+- id: munich-space-companies
+  question: "Which Munich companies work on space or satellite technology?"
+  kind: multi-company
+  relevant_urls: []
+  notes: >-
+    isar-aerospace and ororatech at minimum. Second diversity test, on a pair with
+    very different page shapes (Isar news-heavy, OroraTech site-heavy at 2882 words).
 
 - id: defence-companies
   question: "Which Munich startups work in defence or dual-use technology?"
@@ -170,29 +236,50 @@
     Widest expected answer set — reverion, 1komma5grad, ocell, ororatech, twaice.
     Recall@2 is capped near 0.2 here by construction; read recall@10.
 
-- id: ai-software-companies
-  question: "Which Munich startups build AI software products?"
-  kind: multi-company
-  relevant_urls: []
-  notes: Deliberately broad. Tests whether a vague query collapses onto one company.
-
 - id: hardware-sensor-companies
   question: "Which Munich companies build physical sensors or hardware?"
   kind: multi-company
   relevant_urls: []
   notes: blickfeld, navvis, ocell, ororatech. Cross-cuts the category field.
 
-- id: robotics-automation
-  question: "Which Munich startups work on robotics or industrial automation?"
+# ---------------------------------------------------------------------------
+# multi-company — NEGATIVE CONTROLS (expects_empty)
+#
+# Nothing in the corpus answers these. They take no labels; they exist to measure
+# whether an unanswerable question can be told apart from an answerable one by
+# score. If the best score here matches the best score on a real question, then
+# failure mode 4 is confirmed and no relevance threshold will ever work.
+# ---------------------------------------------------------------------------
+
+- id: no-consumer-social
+  question: "Which Munich startups build consumer social media apps?"
   kind: multi-company
-  relevant_urls: []
+  expects_empty: true
   notes: >-
-    Possibly a near-empty answer set. A question with few relevant pages is worth
-    keeping — it tests that retrieval does not confidently return unrelated ones.
+    Verified absent: zero matches for "social media app" or "consumer social"
+    across all 74 scraped pages. The clean control.
+
+- id: no-autonomous-vehicles
+  question: "Which Munich startups are building self-driving cars?"
+  kind: multi-company
+  expects_empty: true
+  notes: >-
+    The harder control. No company does this, but Blickfeld's news feed contains
+    "autonomous 3D load measurement in mining" and Blickfeld makes lidar — a
+    superficially close false friend. Tests whether retrieval latches onto it.
 
 # ---------------------------------------------------------------------------
 # comparison — both sides must be retrieved
 # ---------------------------------------------------------------------------
+
+- id: compare-proxima-marvel
+  question: "Compare Proxima Fusion and Marvel Fusion."
+  kind: comparison
+  relevant_urls: []
+  notes: >-
+    Failure mode 2. Returns two Proxima chunks and zero Marvel at k=2; Marvel first
+    appears at rank 4, and the top 10 is 7 Proxima to 3 Marvel. Label both
+    companies' pages — recall of 0.5 here means a confidently one-sided answer.
 
 - id: compare-helsing-quantum
   question: "How do Helsing and Quantum Systems differ in what they build?"
@@ -208,12 +295,6 @@
     Both are satellite-data companies (fire vs forestry), so their embeddings sit
     close together. Tests whether near-neighbours crowd each other out.
 
-- id: compare-navvis-blickfeld
-  question: "Compare NavVis and Blickfeld's approaches to 3D spatial data."
-  kind: comparison
-  relevant_urls: []
-  notes: Related domains, very different page shapes.
-
 - id: compare-isar-marvel
   question: "Which is further along, Isar Aerospace or Marvel Fusion?"
   kind: comparison
@@ -224,10 +305,13 @@
 
 # ---------------------------------------------------------------------------
 # aggregation — EXPECTED TO FAIL, reported separately
+#
+# Trimmed to two. These exist to size the gap that the graph work fills, not to be
+# fixed by tuning retrieval, and a correct answer key for count-hiring-companies is
+# all 19 careers pages — which caps recall@10 at 0.53 by arithmetic alone. Label
+# these lightly (a representative handful is enough); the number is not meant to
+# be read as a retrieval score, only to stay pinned near the floor.
 # ---------------------------------------------------------------------------
-# These exist to size the gap, not to be fixed. Label relevant_urls with the pages
-# that would have to be read to answer correctly — that is what makes "retrieval
-# cannot do this" a measured claim rather than an assertion.
 
 - id: count-hiring-companies
   question: "How many Munich startups are currently hiring?"
@@ -241,19 +325,7 @@
   question: "Which Munich startup has raised the most funding?"
   kind: aggregation
   relevant_urls: []
-  notes: Requires comparing FundingRound amounts across companies.
-
-- id: fusion-vs-space-count
-  question: "Are there more fusion startups or more space startups in Munich?"
-  kind: aggregation
-  relevant_urls: []
-  notes: Two counts and a comparison. Retrieval can supply evidence, never the answer.
-
-- id: recent-funding-rounds
-  question: "Which Munich startups raised funding most recently?"
-  kind: aggregation
-  relevant_urls: []
   notes: >-
-    Needs dates ordered across companies. News chunks may contain individual
-    rounds, so this may score non-zero recall while still answering wrongly —
-    a useful demonstration that recall is not correctness.
+    Requires comparing FundingRound amounts across companies. Individual rounds do
+    appear in news chunks, so this may score non-zero recall while still answering
+    wrongly — a standing demonstration that recall is not correctness.

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 QUESTIONS_PATH = Path("data/eval/questions.yaml")
 
@@ -30,19 +30,60 @@ QuestionKind = Literal["single-company", "multi-company", "comparison", "aggrega
 # them into the headline would make every retrieval change look worse than it is.
 EXPECTED_TO_FAIL: frozenset[str] = frozenset({"aggregation"})
 
+# Diversity is only meaningful where several companies SHOULD appear. On a
+# single-company question the ideal is 1 — "What is Konux?" wants Konux, and three
+# companies in the top k is a worse answer, not a better one. Averaging diversity
+# across all kinds would produce a headline that rises when multi-company results
+# improve and also when single-company results degrade, which is no signal at all.
+DIVERSITY_KINDS: frozenset[str] = frozenset({"multi-company", "comparison"})
+
 
 class EvalQuestion(BaseModel):
-    """One labelled question. `relevant_urls` empty means "not labelled yet"."""
+    """One question. Empty `relevant_urls` means "not labelled yet", unless
+    `expects_empty` is set — then having no answer is the answer."""
 
     id: str
     question: str
     kind: QuestionKind
     relevant_urls: list[str] = Field(default_factory=list)
+    # A negative control: the corpus genuinely cannot answer this. Scored on score
+    # separation rather than recall — see `retrieval_metrics.threshold_gap`.
+    expects_empty: bool = False
     notes: str = ""
+
+    @model_validator(mode="after")
+    def _reject_contradictory_labels(self) -> "EvalQuestion":
+        """A question cannot both have a right answer and have none.
+
+        Worth catching at load: the two fields would otherwise disagree silently,
+        and whichever the CLI happened to check first would decide how the question
+        was scored.
+        """
+        if self.expects_empty and self.relevant_urls:
+            raise ValueError(
+                f"question {self.id!r} sets expects_empty but also lists "
+                f"{len(self.relevant_urls)} relevant_urls — it cannot be both."
+            )
+        return self
 
     @property
     def is_labelled(self) -> bool:
+        """Ready to run. A negative control needs no URLs to be fully specified."""
+        return bool(self.relevant_urls) or self.expects_empty
+
+    @property
+    def scores_recall(self) -> bool:
+        """Whether this question contributes to recall/MRR at all.
+
+        False for negative controls: there is nothing to recall, so folding them in
+        would drag every pooled rate toward zero and make a genuine improvement
+        look like a regression.
+        """
         return bool(self.relevant_urls)
+
+    @property
+    def scores_diversity(self) -> bool:
+        return self.kind in DIVERSITY_KINDS and not self.expects_empty
 
     @property
     def expected_to_fail(self) -> bool:
@@ -93,3 +134,13 @@ def labelled(questions: list[EvalQuestion]) -> list[EvalQuestion]:
 def unlabelled(questions: list[EvalQuestion]) -> list[EvalQuestion]:
     """The complement of `labelled` — the remaining labelling backlog."""
     return [q for q in questions if not q.is_labelled]
+
+
+def recall_scored(questions: list[EvalQuestion]) -> list[EvalQuestion]:
+    """Questions with a real answer key, i.e. everything except negative controls."""
+    return [q for q in questions if q.scores_recall]
+
+
+def negative_controls(questions: list[EvalQuestion]) -> list[EvalQuestion]:
+    """Questions the corpus cannot answer, kept to test that this is detectable."""
+    return [q for q in questions if q.expects_empty]

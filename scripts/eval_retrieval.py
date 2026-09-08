@@ -31,6 +31,7 @@ from munich_intel.eval.qa_dataset import (
     EvalQuestion,
     labelled,
     load_questions,
+    negative_controls,
     unlabelled,
 )
 from munich_intel.eval.retrieval_metrics import (
@@ -38,6 +39,8 @@ from munich_intel.eval.retrieval_metrics import (
     mrr,
     pooled_recall,
     recall_counts_at_k,
+    threshold_gap,
+    top_score,
 )
 from munich_intel.retriever import retrieve
 
@@ -51,6 +54,8 @@ FETCH_K = max(K_VALUES)
 
 KIND_ORDER = ("single-company", "multi-company", "comparison", "aggregation")
 
+BLANK = "—"
+
 
 def build_client() -> QdrantClient:
     """Same connection logic as the rest of the app: qdrant_url wins if set."""
@@ -60,18 +65,33 @@ def build_client() -> QdrantClient:
 
 
 def score(question: EvalQuestion, hits: list[dict]) -> dict:
-    """Every metric for one question, from one retrieved list."""
+    """Every applicable metric for one question, from one retrieved list.
+
+    Metrics that do not apply are None rather than 0.0, so the tables can print a
+    dash. A negative control scoring 0.0 recall is not the same fact as a real
+    question scoring 0.0, and collapsing them would make the pooled rows lie.
+    """
     urls = [hit["url"] for hit in hits]
+    scores_recall = question.scores_recall
     return {
         "question": question,
-        "recall": {k: recall_counts_at_k(urls, question.relevant, k) for k in K_VALUES},
-        "mrr": mrr(urls, question.relevant),
-        "diversity": {k: company_diversity(hits, k) for k in K_VALUES},
+        "recall": (
+            {k: recall_counts_at_k(urls, question.relevant, k) for k in K_VALUES}
+            if scores_recall
+            else None
+        ),
+        "mrr": mrr(urls, question.relevant) if scores_recall else None,
+        "diversity": (
+            {k: company_diversity(hits, k) for k in K_VALUES}
+            if question.scores_diversity
+            else None
+        ),
+        "top_score": top_score(hits),
     }
 
 
-def _add_row(table: Table, label: str, rows: list[dict], bold: bool = False) -> None:
-    """A pooled row: recall recomputed from summed counts, MRR and diversity averaged.
+def _pooled_cells(rows: list[dict]) -> list[str]:
+    """The numeric cells of a pooled row.
 
     Recall pools because it is a ratio of countable things — pages found over pages
     that existed — and averaging its per-question rates would let a question with one
@@ -81,15 +101,28 @@ def _add_row(table: Table, label: str, rows: list[dict], bold: bool = False) -> 
     already per-question facts about one result list ("how far down was the first good
     answer", "how many companies did the reader see"), and every question's reader
     counts once. Different operations on purpose, not an inconsistency.
+
+    Each metric averages over only the questions it applies to, so a single-company
+    question never dilutes a diversity figure and a negative control never dilutes
+    recall.
     """
-    cells = [label]
+    scored = [r for r in rows if r["recall"] is not None]
+    diverse = [r for r in rows if r["diversity"] is not None]
+
+    cells = []
     for k in K_VALUES:
-        pooled = pooled_recall([row["recall"][k] for row in rows])
-        cells.append(f"{pooled.recall:.2f}" if rows else "—")
-    cells.append(f"{sum(r['mrr'] for r in rows) / len(rows):.2f}" if rows else "—")
+        pooled = pooled_recall([r["recall"][k] for r in scored])
+        cells.append(f"{pooled.recall:.2f}" if scored else BLANK)
+    cells.append(f"{sum(r['mrr'] for r in scored) / len(scored):.2f}" if scored else BLANK)
     for k in K_VALUES:
-        cells.append(f"{sum(r['diversity'][k] for r in rows) / len(rows):.1f}" if rows else "—")
-    cells.append(str(len(rows)))
+        cells.append(
+            f"{sum(r['diversity'][k] for r in diverse) / len(diverse):.1f}" if diverse else BLANK
+        )
+    return cells
+
+
+def _add_pooled_row(table: Table, label: str, rows: list[dict], bold: bool = False) -> None:
+    cells = [label, *_pooled_cells(rows), str(len(rows))]
     if bold:
         cells = [f"[bold]{cell}[/bold]" for cell in cells]
     table.add_row(*cells)
@@ -120,69 +153,116 @@ def main() -> None:
     client = build_client()
 
     results = [
-        score(question, retrieve(question.question, model, client, settings.collection_name, FETCH_K))
-        for question in todo
+        score(q, retrieve(q.question, model, client, settings.collection_name, FETCH_K))
+        for q in todo
     ]
 
-    per_question = Table(
+    _print_per_question(results)
+    _print_pooled(results)
+    _print_controls(results)
+    _print_backlog(backlog)
+
+
+def _print_per_question(results: list[dict]) -> None:
+    table = Table(
         title=f"Retrieval vs. gold (top_k in use: {settings.retrieval_top_k}, "
         f"chunk {settings.chunk_size}w/{settings.chunk_overlap})  "
-        f"[dim]† = aggregation, expected to fail[/dim]"
+        f"[dim]† aggregation, expected to fail · ‡ negative control[/dim]"
     )
     # The id column folds rather than truncating: in a narrow terminal rich shrinks
     # whatever can wrap, and a wrapped id is readable where an ellipsed score is not.
-    per_question.add_column("Question", style="cyan", overflow="fold")
-    per_question.add_column("Kind", style="dim", overflow="fold")
-    per_question.add_column("Rel", justify="right")
+    table.add_column("Question", style="cyan", overflow="fold")
+    table.add_column("Kind", style="dim", overflow="fold")
+    table.add_column("Rel", justify="right")
     for k in K_VALUES:
-        per_question.add_column(f"R@{k}", justify="right")
-    per_question.add_column("MRR", justify="right")
+        table.add_column(f"R@{k}", justify="right")
+    table.add_column("MRR", justify="right")
     for k in K_VALUES:
-        per_question.add_column(f"C@{k}", justify="right")
+        table.add_column(f"C@{k}", justify="right")
+    table.add_column("Top", justify="right")
 
     for row in sorted(results, key=lambda r: (KIND_ORDER.index(r["question"].kind), r["question"].id)):
         question = row["question"]
-        # Expected-to-fail questions are marked in place so a low score is never
-        # mistaken for a regression introduced by a retrieval change. A "†" rather
-        # than a word, to keep the id column narrow enough to read at a glance.
-        label = f"{question.id} [dim]†[/dim]" if question.expected_to_fail else question.id
-        per_question.add_row(
-            label,
+        # Marked in place so a low score is never mistaken for a regression
+        # introduced by a retrieval change.
+        mark = " [dim]‡[/dim]" if question.expects_empty else (" [dim]†[/dim]" if question.expected_to_fail else "")
+        recall, diversity = row["recall"], row["diversity"]
+        table.add_row(
+            f"{question.id}{mark}",
             question.kind,
-            str(row["recall"][K_VALUES[0]].total),
-            *[f"{row['recall'][k].recall:.2f}" for k in K_VALUES],
-            f"{row['mrr']:.2f}",
-            *[str(row["diversity"][k]) for k in K_VALUES],
+            str(recall[K_VALUES[0]].total) if recall else BLANK,
+            *[f"{recall[k].recall:.2f}" if recall else BLANK for k in K_VALUES],
+            f"{row['mrr']:.2f}" if row["mrr"] is not None else BLANK,
+            *[str(diversity[k]) if diversity else BLANK for k in K_VALUES],
+            f"{row['top_score']:.2f}",
         )
-    console.print(per_question)
+    console.print(table)
 
-    pooled = Table(title="Pooled by kind (recall from summed counts; MRR and diversity are means)")
-    pooled.add_column("Kind", style="cyan")
+
+def _print_pooled(results: list[dict]) -> None:
+    table = Table(
+        title="Pooled by kind (recall from summed counts; MRR and diversity are means "
+        "over the questions each applies to)"
+    )
+    table.add_column("Kind", style="cyan")
     for k in K_VALUES:
-        pooled.add_column(f"R@{k}", justify="right")
-    pooled.add_column("MRR", justify="right")
+        table.add_column(f"R@{k}", justify="right")
+    table.add_column("MRR", justify="right")
     for k in K_VALUES:
-        pooled.add_column(f"C@{k}", justify="right")
-    pooled.add_column("Qs", justify="right")
+        table.add_column(f"C@{k}", justify="right")
+    table.add_column("Qs", justify="right")
 
     by_kind: dict[str, list[dict]] = defaultdict(list)
     for row in results:
         by_kind[row["question"].kind].append(row)
     for kind in KIND_ORDER:
         if by_kind[kind]:
-            _add_row(pooled, kind, by_kind[kind])
+            _add_pooled_row(table, kind, by_kind[kind])
 
-    # The headline excludes aggregation questions: they are unanswerable by
-    # retrieval at any k, so folding them in would make every future retrieval
-    # change look smaller than it is. They are shown on their own row above and
-    # in the "all" row below, which is the honest total.
-    scorable = [row for row in results if not row["question"].expected_to_fail]
-    pooled.add_section()
-    _add_row(pooled, "retrievable (excl. aggregation)", scorable, bold=True)
-    _add_row(pooled, "all questions", results)
-    console.print(pooled)
+    # The headline excludes aggregation questions and negative controls: neither is
+    # answerable by retrieval at any k, so folding them in would make every future
+    # retrieval change look smaller than it is. Both appear on their own rows above
+    # and in the "all" row below, which is the honest total.
+    headline = [
+        r for r in results if not r["question"].expected_to_fail and not r["question"].expects_empty
+    ]
+    table.add_section()
+    _add_pooled_row(table, "retrievable (headline)", headline, bold=True)
+    _add_pooled_row(table, "all questions", results)
+    console.print(table)
 
-    _print_backlog(backlog)
+
+def _print_controls(results: list[dict]) -> None:
+    """Whether an unanswerable question can be told apart from an answerable one.
+
+    Reported separately because it is not a recall question at all: it asks whether
+    any score cutoff could exist. Without it the eval would have no way to notice a
+    change that improves recall by returning more of everything, junk included.
+    """
+    controls = [r for r in results if r["question"].expects_empty]
+    if not controls:
+        return
+
+    answerable = [r["top_score"] for r in results if r["recall"] is not None]
+    unanswerable = [r["top_score"] for r in controls]
+    gap = threshold_gap(answerable, unanswerable)
+
+    table = Table(title="Negative controls — can an unanswerable question be detected?")
+    table.add_column("Measure", style="cyan")
+    table.add_column("Score", justify="right")
+    table.add_row("worst top-score on an answerable question", f"{min(answerable):.3f}" if answerable else BLANK)
+    table.add_row("best top-score on a negative control", f"{max(unanswerable):.3f}")
+    table.add_section()
+    # Three states, not two: "no gap demonstrated" is a different claim from "no gap
+    # exists", and with nothing labelled to compare against only the first is honest.
+    if not answerable:
+        verdict = "[yellow]not measurable — no labelled answerable questions yet[/yellow]"
+    elif gap > 0:
+        verdict = f"[green]{gap:+.3f} — a cutoff exists in this range[/green]"
+    else:
+        verdict = f"[red]{gap:+.3f} — no cutoff can separate them[/red]"
+    table.add_row("[bold]threshold gap[/bold]", verdict)
+    console.print(table)
 
 
 def _print_backlog(backlog: list[EvalQuestion]) -> None:

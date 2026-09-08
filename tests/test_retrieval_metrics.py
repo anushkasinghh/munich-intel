@@ -19,6 +19,8 @@ from munich_intel.eval.retrieval_metrics import (
     pooled_recall,
     recall_at_k,
     recall_counts_at_k,
+    threshold_gap,
+    top_score,
 )
 
 MARVEL = "https://marvelfusion.com/"
@@ -27,8 +29,8 @@ KONUX_NEWS = "https://news.google.com/rss/search?q=konux"
 KONUX_SITE = "https://www.konux.com/company"
 
 
-def hit(url: str, slug: str) -> dict:
-    return {"url": url, "company_slug": slug, "chunk_text": "...", "score": 0.5}
+def hit(url: str, slug: str, score: float = 0.5) -> dict:
+    return {"url": url, "company_slug": slug, "chunk_text": "...", "score": score}
 
 
 class TestRecallAtK:
@@ -154,6 +156,43 @@ class TestHitRate:
     def test_empty_relevant_raises(self):
         with pytest.raises(ValueError, match="unlabelled"):
             hit_rate([MARVEL], set(), k=2)
+
+
+class TestTopScore:
+    def test_takes_the_best_not_the_first(self):
+        retrieved = [hit(MARVEL, "marvel-fusion", 0.52), hit(PROXIMA, "proxima-fusion", 0.61)]
+        assert top_score(retrieved) == 0.61
+
+    def test_empty_result_set_is_zero(self):
+        assert top_score([]) == 0.0
+
+
+class TestThresholdGap:
+    def test_positive_gap_means_a_cutoff_exists(self):
+        # Every answerable question beats every unanswerable one, so a threshold
+        # anywhere in the gap would correctly reject the unanswerable ones.
+        assert threshold_gap([0.70, 0.80], [0.40, 0.55]) == pytest.approx(0.15)
+
+    def test_overlap_means_no_cutoff_can_work(self):
+        # Failure mode 4: the compressed 0.41-0.65 score band. The worst real
+        # question (0.44) scores below the best junk one (0.63), so any cutoff that
+        # rejected the junk would also throw away a genuine answer.
+        assert threshold_gap([0.44, 0.65], [0.41, 0.63]) == pytest.approx(-0.19)
+
+    def test_touching_distributions_give_no_room(self):
+        # Exactly equal is still no gap: a cutoff needs somewhere to sit.
+        assert threshold_gap([0.50], [0.50]) == 0.0
+
+    def test_uses_worst_answerable_against_best_unanswerable(self):
+        # Not the means: one answerable question scoring low is enough to close the
+        # gap, because a threshold has to work for every question, not on average.
+        assert threshold_gap([0.90, 0.90, 0.42], [0.60]) == pytest.approx(-0.18)
+
+    @pytest.mark.parametrize("answerable,unanswerable", [([], [0.5]), ([0.5], []), ([], [])])
+    def test_missing_either_side_demonstrates_nothing(self, answerable, unanswerable):
+        # 0.0 rather than a positive number: with nothing to compare against, no
+        # separation has been shown, and claiming one is the wrong way to be wrong.
+        assert threshold_gap(answerable, unanswerable) == 0.0
 
 
 class TestPooledRecall:

@@ -140,6 +140,35 @@ def hit_rate(retrieved_urls: list[str], relevant_urls: set[str], k: int) -> bool
     return bool(set(_top_k_urls(retrieved_urls, k)) & relevant)
 
 
+def top_score(retrieved: list[dict]) -> float:
+    """The best similarity score in a result set, or 0.0 if nothing came back.
+
+    Not a quality metric on its own — cosine scores in this index are compressed
+    into roughly 0.41-0.65 for everything, which is the point. It is only meaningful
+    compared across questions, via `threshold_gap`.
+    """
+    return max((hit["score"] for hit in retrieved), default=0.0)
+
+
+def threshold_gap(answerable_top_scores: list[float], unanswerable_top_scores: list[float]) -> float:
+    """How much room exists for a relevance cutoff: worst answerable minus best unanswerable.
+
+    A positive gap means some threshold sits between them, so retrieval could learn
+    to say "I don't know" — anything scoring below it is a question the corpus
+    cannot answer. Zero or negative means no such cutoff exists at any value: the
+    best match for a question about self-driving cars scores as high as the best
+    match for a question the corpus genuinely answers, so filtering by score would
+    discard real answers before it discarded junk. That is failure mode 4 as a
+    single number, and it is the number a reranker (Phase 3d) would have to move.
+
+    Returns 0.0 when either side is empty — with nothing to compare, no gap has been
+    demonstrated, and claiming one would be the wrong direction to fail in.
+    """
+    if not answerable_top_scores or not unanswerable_top_scores:
+        return 0.0
+    return min(answerable_top_scores) - max(unanswerable_top_scores)
+
+
 def pooled_recall(counts: list[RecallCounts]) -> RecallCounts:
     """Sum found/total across questions and recompute the rate — never average rates.
 
