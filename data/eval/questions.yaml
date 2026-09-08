@@ -70,7 +70,9 @@
 - id: what-is-konux
   question: "What is Konux?"
   kind: single-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://www.konux.com"
+    - "https://www.konux.com/company"
   notes: >-
     Failure mode 3. A Google News RSS headline dump ranks 1st; konux.com/company
     is 3rd, outside a k=2 cutoff. The canonical case for source_type filtering.
@@ -78,38 +80,69 @@
 - id: ororatech-wildfire
   question: "How does OroraTech detect wildfires?"
   kind: single-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://ororatech.com"
+    - "https://ororatech.com/about-us"
   notes: Richest site page in the corpus (2882 words). Should be the easy case.
 
 - id: reverion-technology
   question: "What technology does Reverion use for its power plants?"
   kind: single-company
-  relevant_urls: []
-  notes: Balanced page shape — site 718 / news 622 / careers 666.
+  relevant_urls:
+    - "https://reverion.com"
+    - "https://reverion.com/about"
+    - "https://reverion.com/en/career/"
+  notes: >-
+    reverion.com and reverion.com/about hold IDENTICAL text (718 words each, in
+    German) — both labelled, since retrieving either answers the question. The
+    careers page is labelled too and is the arguable call: it is a jobs page, but
+    it states the technology outright ("reversible power plants that convert biogas
+    or hydrogen into electricity and heat"). Drop it if you disagree.
 
 - id: voiceline-product
   question: "What does VoiceLine's sales documentation tool do?"
   kind: single-company
-  relevant_urls: []
-  notes: No careers page. site 378 vs news 1269 — news outweighs the real page 3:1.
+  relevant_urls:
+    - "https://www.getvoiceline.com"
+  notes: >-
+    No careers page. Two site pages: getvoiceline.com (2679 words, the product
+    explanation) and /about (378, mission and team) — only the first answers this.
+    An earlier note here said "site 378" and was wrong: it counted only /about.
 
 - id: spaitial-3d
   question: "What is Spaitial's approach to 3D scene generation?"
   kind: single-company
-  relevant_urls: []
-  notes: Thin site page (167 words), careers is a 23-word shell.
+  relevant_urls:
+    - "https://spaitial.ai"
+    - "https://spaitial.ai/about"
+  notes: >-
+    Two site pages, both on topic: spaitial.ai (506 words, the Echo model family)
+    and /about (167, the "physically-grounded world models" framing). Careers is a
+    23-word shell.
 
 - id: 1komma5-energy
   question: "What does 1Komma5Grad offer homeowners?"
   kind: single-company
-  relevant_urls: []
-  notes: Largest site page after OroraTech (1117); news is unusually thin (225).
+  relevant_urls:
+    - "https://1komma5grad.com"
+    - "https://1komma5grad.com/ueber-uns"
+  notes: >-
+    1komma5grad.com and /ueber-uns hold identical text (1117 words each, German);
+    both labelled. The careers page also names the products (solar, heat pumps,
+    storage, wall boxes) but frames them as jobs — excluded, arguable.
 
 - id: merantix-what
   question: "What is Merantix and how does it work with startups?"
   kind: single-company
-  relevant_urls: []
-  notes: Venture-studio model; tiny site page (136) against 1041 words of news.
+  relevant_urls:
+    - "https://www.merantix.com"
+    - "https://news.google.com/rss/search?q=%22Merantix%22&hl=en-US&gl=US&ceid=US:en"
+  notes: >-
+    The weakest question in the set — flagged for review. Merantix's site pages are
+    nearly empty (merantix.com is 136 words, mostly cookie-consent text; /about is a
+    72-word team list), so the "how does it work with startups" half is answered
+    only by the news feed (EUR-103M fund to back early-stage European startups).
+    Consider cutting it, or narrowing it to "What is Merantix?".
 
 # ---------------------------------------------------------------------------
 # single-company — answerable only from news (no site page exists)
@@ -118,7 +151,9 @@
 - id: what-is-helsing
   question: "What is Helsing and what do they build?"
   kind: single-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://helsing.ai/careers"
+    - "https://news.google.com/rss/search?q=%22Helsing%22&hl=en-US&gl=US&ceid=US:en"
   notes: >-
     Helsing has no site page in data/raw/ — only news (2697 words) and careers.
     Tests whether a company can be described at all from news chunks alone.
@@ -126,13 +161,21 @@
 - id: quantum-systems-drones
   question: "What does Quantum Systems make?"
   kind: single-company
-  relevant_urls: []
-  notes: No site page either; news-only + careers, same shape as Helsing.
+  relevant_urls:
+    - "https://quantum-systems.com/career-at-quantum-systems/"
+  notes: >-
+    NOT the same shape as Helsing after all. Quantum Systems has no site page, and
+    its news feed is CONTAMINATED: only 11 of 102 headlines are about the company —
+    the rest are quantum-physics articles (the RSS query "Quantum Systems" catches
+    "quantum matter", "quantum computing"). So the careers page is the only page in
+    the index that says what the company makes ("AI-powered unmanned aerial
+    systems"), and it is the sole label.
 
 - id: twaice-battery
   question: "What does TWAICE do?"
   kind: single-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://news.google.com/rss/search?q=%22Twaice%22&hl=en-US&gl=US&ceid=US:en"
   notes: >-
     Only ONE page in the whole index (news, 848 words). The cleanest test of
     whether a single relevant page can be surfaced at all.
@@ -140,7 +183,8 @@
 - id: microagi-what
   question: "What is MicroAGI building?"
   kind: single-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://news.google.com/rss/search?q=%22Microagi%22&hl=en-US&gl=US&ceid=US:en"
   notes: >-
     JS shell: site and careers are 1 word each. Only news (742) carries content.
     If this is unanswerable, that is a scraping finding, not a retrieval one.
@@ -156,15 +200,20 @@
 - id: isar-spectrum-launch
   question: "What happened with Isar Aerospace's Spectrum rocket launch?"
   kind: single-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://news.google.com/rss/search?q=%22Isar+Aerospace%22&hl=en-US&gl=US&ceid=US:en"
   notes: >-
-    A specific recent event. isaraerospace.com exists (371 words) but is marketing
-    copy; the launch is only in the news feed (2723 words). Label the news page.
+    A specific recent event. Isar has two real site pages, but neither covers the
+    launch; the news feed carries 19 separate Spectrum mentions (second launch date
+    set, launch halted minutes before, EUR-270M Series D to ramp up Spectrum). News
+    is the only correct answer here despite site pages existing — which is the whole
+    point of this question.
 
 - id: proxima-funding
   question: "How much funding has Proxima Fusion raised?"
   kind: single-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://news.google.com/rss/search?q=%22Proxima+Fusion%22&hl=en-US&gl=US&ceid=US:en"
   notes: >-
     Funding amounts live in news, not on the company site (365 words). Pairs with
     most-funded-company: this one IS answerable from a passage, that one is not.
@@ -178,25 +227,34 @@
 # ---------------------------------------------------------------------------
 
 - id: ororatech-roles
-  question: "What roles is OroraTech hiring for?"
+  question: "What is it like to work at OroraTech?"
   kind: single-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://ororatech.com/company/careers"
   notes: >-
-    Largest careers page in the corpus (1210 words), ATS-backed. Note the page is
-    partly a pointer to ororatech.com/company/careers — label what is indexed.
+    Largest careers page in the corpus (1210 words). Reworded while labelling: the
+    original asked "what roles is OroraTech hiring for", which the indexed page
+    cannot answer — it lists no vacancies, only nav links and culture copy
+    ("engineers, scientists and builders from 40+ nationalities"). Asking what the
+    page actually supports keeps this a careers-page test rather than a scraping
+    complaint. That the openings are missing is the ATS-scraping gap, not retrieval's.
 
 - id: navvis-hiring
-  question: "Is NavVis hiring, and for what kind of positions?"
+  question: "What benefits does NavVis offer employees?"
   kind: single-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://www.navvis.com/company/careers"
   notes: >-
-    Careers page (939) is nearly twice the site page (506) — the one company where
-    the careers page is the dominant source. Text includes "Open positions".
+    Reworded while labelling, same reason as ororatech-roles: the page lists no
+    vacancies, but it does state benefits concretely (30 days paid time off,
+    flexible hours, hybrid setup, full visa and relocation support), so the
+    question is answerable from exactly one page — a clean careers-page test.
 
 - id: isar-aerospace-jobs
   question: "What jobs are open at Isar Aerospace?"
   kind: single-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://isaraerospace.com/career"
   notes: >-
     Careers page is 1108 words with no per-job links — the page the jobs eval
     showed producing 8 fabricated postings. Retrieval gold is still "this is the
@@ -209,7 +267,10 @@
 - id: fusion-companies
   question: "Which Munich startups are working on nuclear fusion?"
   kind: multi-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://www.marvelfusion.com"
+    - "https://www.proximafusion.com"
+    - "https://www.proximafusion.com/about"
   notes: >-
     Failure mode 1. Returns marvel-fusion at ranks 1-6, proxima-fusion first at
     rank 7. At k=2 the answer can never name both.
@@ -217,30 +278,60 @@
 - id: munich-space-companies
   question: "Which Munich companies work on space or satellite technology?"
   kind: multi-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://www.isaraerospace.com"
+    - "https://www.isaraerospace.com/about"
+    - "https://ororatech.com"
+    - "https://ororatech.com/about-us"
   notes: >-
-    isar-aerospace and ororatech at minimum. Second diversity test, on a pair with
-    very different page shapes (Isar news-heavy, OroraTech site-heavy at 2882 words).
+    isar-aerospace (two site pages: the 445-word home and the 371-word /about) and
+    ororatech (ororatech.com plus /about-us). Second diversity test, on a pair with
+    very different page shapes. Ocell uses satellite DATA but builds no space
+    technology — excluded, arguable.
 
 - id: defence-companies
   question: "Which Munich startups work in defence or dual-use technology?"
   kind: multi-company
-  relevant_urls: []
-  notes: helsing and quantum-systems at minimum; both are news-heavy, no site page.
+  relevant_urls:
+    - "https://helsing.ai/careers"
+    - "https://news.google.com/rss/search?q=%22Helsing%22&hl=en-US&gl=US&ceid=US:en"
+    - "https://quantum-systems.com/career-at-quantum-systems/"
+  notes: >-
+    helsing and quantum-systems; neither has a site page. Helsing's careers page and
+    news feed both establish the defence work. Quantum Systems' news feed is
+    contaminated with quantum-physics articles (11 of 102 headlines on-topic), so
+    only its careers page is labelled.
 
 - id: climate-energy-companies
   question: "Which Munich startups work on clean energy or climate technology?"
   kind: multi-company
-  relevant_urls: []
+  relevant_urls:
+    - "https://reverion.com"
+    - "https://reverion.com/about"
+    - "https://1komma5grad.com"
+    - "https://1komma5grad.com/ueber-uns"
+    - "https://ororatech.com"
+    - "https://ocell.io"
+    - "https://news.google.com/rss/search?q=%22Twaice%22&hl=en-US&gl=US&ceid=US:en"
   notes: >-
-    Widest expected answer set — reverion, 1komma5grad, ocell, ororatech, twaice.
-    Recall@2 is capped near 0.2 here by construction; read recall@10.
+    Widest answer set in the file (7 pages, 5 companies), so recall@2 is capped at
+    0.29 by arithmetic — read recall@10. Ocell is the arguable inclusion: forestry
+    software with carbon-credit projects, which is climate-adjacent rather than
+    clean energy. Drop it if you read the category more narrowly.
 
 - id: hardware-sensor-companies
   question: "Which Munich companies build physical sensors or hardware?"
   kind: multi-company
-  relevant_urls: []
-  notes: blickfeld, navvis, ocell, ororatech. Cross-cuts the category field.
+  relevant_urls:
+    - "https://www.blickfeld.com"
+    - "https://www.blickfeld.com/company"
+    - "https://www.navvis.com"
+    - "https://www.navvis.com/about"
+  notes: >-
+    Labelled on blickfeld (blickfeld.com plus the 1068-word /company page) and
+    navvis (navvis.com plus /about) — the two that unambiguously build hardware.
+    OroraTech builds satellites and Ocell is pure software; both excluded, and the
+    OroraTech call is arguable.
 
 # ---------------------------------------------------------------------------
 # multi-company — NEGATIVE CONTROLS (expects_empty)
@@ -275,7 +366,10 @@
 - id: compare-proxima-marvel
   question: "Compare Proxima Fusion and Marvel Fusion."
   kind: comparison
-  relevant_urls: []
+  relevant_urls:
+    - "https://www.marvelfusion.com"
+    - "https://www.proximafusion.com"
+    - "https://www.proximafusion.com/about"
   notes: >-
     Failure mode 2. Returns two Proxima chunks and zero Marvel at k=2; Marvel first
     appears at rank 4, and the top 10 is 7 Proxima to 3 Marvel. Label both
@@ -284,21 +378,35 @@
 - id: compare-helsing-quantum
   question: "How do Helsing and Quantum Systems differ in what they build?"
   kind: comparison
-  relevant_urls: []
-  notes: Both news-heavy with no site page — the hardest comparison in the set.
+  relevant_urls:
+    - "https://helsing.ai/careers"
+    - "https://news.google.com/rss/search?q=%22Helsing%22&hl=en-US&gl=US&ceid=US:en"
+    - "https://quantum-systems.com/career-at-quantum-systems/"
+  notes: >-
+    The hardest comparison in the set: neither company has a site page, and Quantum
+    Systems' news feed is 89% quantum-physics noise, so its careers page carries the
+    whole burden of one side.
 
 - id: compare-ororatech-ocell
   question: "What is the difference between OroraTech and Ocell?"
   kind: comparison
-  relevant_urls: []
+  relevant_urls:
+    - "https://ororatech.com"
+    - "https://ororatech.com/about-us"
+    - "https://ocell.io"
   notes: >-
     Both are satellite-data companies (fire vs forestry), so their embeddings sit
-    close together. Tests whether near-neighbours crowd each other out.
+    close together. Tests whether near-neighbours crowd each other out. Ocell has
+    only one usable page: its news feed is contaminated (1 of 21 headlines is the
+    company — the rest are about a Spanish climbing crag called Cova de Ocell).
 
 - id: compare-isar-marvel
   question: "Which is further along, Isar Aerospace or Marvel Fusion?"
   kind: comparison
-  relevant_urls: []
+  relevant_urls:
+    - "https://www.isaraerospace.com"
+    - "https://www.isaraerospace.com/about"
+    - "https://www.marvelfusion.com"
   notes: >-
     Unrelated domains, both news-heavy (2723 / 2526). Tests whether two distant
     companies can share a top-k at all, and whether news chunks dominate both sides.
@@ -316,7 +424,12 @@
 - id: count-hiring-companies
   question: "How many Munich startups are currently hiring?"
   kind: aggregation
-  relevant_urls: []
+  relevant_urls:
+    - "https://isaraerospace.com/career"
+    - "https://www.navvis.com/company/careers"
+    - "https://ororatech.com/company/careers"
+    - "https://helsing.ai/careers"
+    - "https://reverion.com/en/career/"
   notes: >-
     Requires counting across every careers page. No single passage contains the
     answer. This is the question the graph work exists to answer.
@@ -324,7 +437,11 @@
 - id: most-funded-company
   question: "Which Munich startup has raised the most funding?"
   kind: aggregation
-  relevant_urls: []
+  relevant_urls:
+    - "https://news.google.com/rss/search?q=%22Proxima+Fusion%22&hl=en-US&gl=US&ceid=US:en"
+    - "https://news.google.com/rss/search?q=%22Marvel+Fusion%22&hl=en-US&gl=US&ceid=US:en"
+    - "https://news.google.com/rss/search?q=%22Isar+Aerospace%22&hl=en-US&gl=US&ceid=US:en"
+    - "https://news.google.com/rss/search?q=%22Helsing%22&hl=en-US&gl=US&ceid=US:en"
   notes: >-
     Requires comparing FundingRound amounts across companies. Individual rounds do
     appear in news chunks, so this may score non-zero recall while still answering
