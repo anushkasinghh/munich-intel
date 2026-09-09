@@ -148,3 +148,118 @@ moving off 0.00 without marvel-fusion or merantix regressing. Re-label gold from
 same-day `data/raw/` scrape so the date-skew tags drop out of the taxonomy — until
 then, the three skew tags (8 of 11 errors) are noise the extractor is not responsible
 for.
+
+---
+
+# Retrieval eval
+
+Scores which *pages* come back for a question and in what order. Entirely separate
+from the jobs eval above, which scores entity extraction — the two share only the
+discipline, not a line of scoring code (see `normalize_page_url` below for why they
+cannot even share a URL normalizer).
+
+`python scripts/eval_retrieval.py`, 29 hand-labelled questions over the live Qdrant
+collection. No LLM calls, so it is safe to run in a loop while tuning.
+
+## What is measured, and why each metric is here
+
+| Metric | Question it answers | Why not just recall |
+|---|---|---|
+| `recall@k` | of the pages that genuinely answer this, how many made the top k | the headline |
+| `MRR` | how far down the first good answer sits | separates "missed by one rank" from "absent" |
+| `C@k` (company diversity) | how many distinct companies the reader actually saw | recall can be decent while every chunk is one company |
+| `threshold gap` | can an unanswerable question be told apart from an answerable one | catches a change that lifts recall by returning more of everything |
+
+`C@k` is reported **only for `multi-company` and `comparison`**. For a
+single-company question the ideal diversity is 1 — "What is Konux?" wants Konux —
+so averaging it across kinds gives a number that rises both when multi-company
+results improve and when single-company results degrade.
+
+Aggregation questions and negative controls are excluded from the headline row.
+Neither is answerable by retrieval at any k, so folding them in would make every
+future change look smaller than it is.
+
+## Baseline — 2026-09-09
+
+Config: `retrieval_top_k=2`, chunk 512 words / 50 overlap, bge-m3 1024-dim cosine,
+no filtering. Index: 158 chunks / 74 URLs / 21 companies.
+
+| Kind | R@2 | R@5 | R@10 | MRR | C@2 | C@5 | C@10 | Qs |
+|---|---|---|---|---|---|---|---|---|
+| single-company | 0.60 | 1.00 | 1.00 | 0.81 | — | — | — | 16 |
+| multi-company | 0.09 | 0.14 | 0.27 | 0.47 | 1.4 | 2.8 | 4.6 | 7 |
+| comparison | 0.31 | 0.54 | 0.62 | 1.00 | 1.0 | 1.2 | 2.2 | 4 |
+| aggregation | 0.00 | 0.00 | 0.22 | 0.08 | — | — | — | 2 |
+| **retrievable (headline)** | **0.35** | **0.58** | **0.65** | **0.77** | **1.2** | **2.1** | **3.6** | **25** |
+| all questions | 0.30 | 0.51 | 0.59 | 0.72 | 1.2 | 2.1 | 3.6 | 29 |
+
+Negative controls: worst answerable top-score **0.522**, best unanswerable
+top-score **0.553**, **threshold gap −0.031**.
+
+### What the baseline says
+
+1. **Single-company retrieval is already solved by raising k, and nothing else.**
+   R@2 0.60 → R@5 **1.00**. Every one of the 16 single-company answers is present
+   by rank 5; `top_k=2` is the only thing hiding them. This is the cheapest win
+   available and it needs no new machinery.
+2. **Multi-company retrieval is NOT fixed by raising k — this is the real finding.**
+   R@2 0.09 → R@10 0.27. Ten chunks still surface barely a quarter of the relevant
+   pages. Compare that with single-company hitting 1.00 by k=5: the failure is not
+   depth, it is that one company's chunks occupy the slots. `climate-energy-companies`
+   is the extreme case — 6 distinct companies in the top 10 yet only 1 of 7 labelled
+   pages found, meaning retrieval surfaces the right *companies* but the wrong
+   *pages*. Per-company capping (3b) targets exactly this; a bigger k alone will not.
+3. **Every comparison question returns exactly one company at k=2** (C@2 = 1.0
+   across all four). The generator is being asked to compare two things while
+   being shown one of them. This is failure mode 2, and C@k is what makes it visible
+   — recall alone reads a middling 0.31.
+4. **No relevance threshold can exist.** The threshold gap is **negative**: the worst
+   answerable question (0.522) scores *below* the best question the corpus cannot
+   answer at all (0.553). "Which Munich startups are building self-driving cars?" —
+   nothing in the corpus does — outranks several real questions. Any score cutoff
+   would discard genuine answers before it discarded junk, so filtering by score is
+   off the table and a reranker (3d) is the only lever that could move this.
+5. **Aggregation is at the floor and should stay there.** R@2 0.00, MRR 0.08.
+   That is the intended result: it sizes the gap the graph work fills.
+
+### Two bugs the eval found before it produced a single score
+
+Both were found while building the instrument, which is the argument for building
+it first.
+
+**Four contaminated news feeds (fixed, commit `d4000ab`).** `scraper.news_url` used
+the quoted company name as the whole query for every company. Measured on-topic
+headline rates: `viktor` 2/100 (Arsenal's Viktor Gyökeres and a golfer), `allo`
+2/100 (Allogene Therapeutics), `ocell` 1/21 (a Spanish climbing crag),
+`quantum-systems` 11/102 (quantum-physics coverage). That was 22 of 173 chunks —
+**13% of the index** — of pure noise. Fixed with an opt-in per-company `news_query`
+in `companies.yaml`, re-scraped and re-ingested to 158 chunks. Fixed *before* the
+baseline deliberately: a baseline is long-lived, and one taken on a 13%-junk corpus
+would have been void the moment the feeds were fixed.
+
+**The jobs eval's URL normalizer cannot be reused here.** `metrics.normalize_url`
+strips the query string, which is right for a job listing (`?language=en`,
+`?utm_source=...` do not change which job is meant). Applied to page URLs it is
+catastrophic: every Google News feed is `news.google.com/rss/search?q=<company>`,
+differing *only* in the query, so **all 21 collapse to one key** — 74 distinct pages
+became 54. The first baseline run was measurably inflated by it (headline R@2 0.38
+vs the true 0.35, aggregation MRR 0.50 vs 0.08) because any news-labelled question
+matched any company's feed. `retrieval_metrics.normalize_page_url` keeps the query
+and normalizes only host case, trailing slash and fragment. Both normalizers still
+key on URL rather than Qdrant point id, which is the property that lets a gold label
+survive the `chunk_size` change in 3c.
+
+### Labelling method
+
+Labelled by reading the scraped `page_text` in `data/raw/` — never by running
+retrieval and keeping what came back, which would score the system against itself
+and always look perfect. 69 labels over 27 questions, every one verified to resolve
+to a real page. Source mix is site 38 / careers 15 / news 16, and that balance is
+deliberate: an earlier draft of the question set had ~20 site, 4 news and **zero**
+careers, which would have scored "drop news, prefer site pages" as a clear win while
+breaking every hiring and recent-events answer in the app.
+
+Two questions were reworded during labelling because their pages could not answer
+them: OroraTech's careers page lists no vacancies and NavVis's lists benefits rather
+than openings, so "what roles are they hiring for" was unanswerable from the index —
+a scraping gap, not a retrieval one.

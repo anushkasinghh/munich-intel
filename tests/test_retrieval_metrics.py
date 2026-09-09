@@ -11,8 +11,10 @@ description of what "fixed" means.
 
 import pytest
 
+from munich_intel.eval.metrics import normalize_url
 from munich_intel.eval.retrieval_metrics import (
     RecallCounts,
+    normalize_page_url,
     company_diversity,
     hit_rate,
     mrr,
@@ -31,6 +33,43 @@ KONUX_SITE = "https://www.konux.com/company"
 
 def hit(url: str, slug: str, score: float = 0.5) -> dict:
     return {"url": url, "company_slug": slug, "chunk_text": "...", "score": score}
+
+
+class TestNormalizePageUrl:
+    def test_query_string_is_kept_because_it_identifies_the_page(self):
+        # THE bug this function exists for. Every Google News feed shares the path
+        # /rss/search and differs only in ?q=, so dropping the query (as the jobs
+        # eval's normalize_url does) merged all 21 company feeds into one key.
+        twaice = "https://news.google.com/rss/search?q=%22Twaice%22&hl=en-US"
+        konux = "https://news.google.com/rss/search?q=%22KONUX%22&hl=en-US"
+        assert normalize_page_url(twaice) != normalize_page_url(konux)
+
+    def test_the_jobs_normalizer_would_have_merged_them(self):
+        # Pinned deliberately: this documents WHY there are two normalizers, so
+        # nobody "simplifies" the retrieval eval back onto the jobs one.
+        twaice = "https://news.google.com/rss/search?q=%22Twaice%22&hl=en-US"
+        konux = "https://news.google.com/rss/search?q=%22KONUX%22&hl=en-US"
+        assert normalize_url(twaice) == normalize_url(konux)
+
+    @pytest.mark.parametrize(
+        "variant",
+        [
+            "https://www.konux.com/company",
+            "https://www.konux.com/company/",  # trailing slash
+            "https://WWW.KONUX.COM/company",  # host case
+            "https://www.konux.com/company#team",  # fragment
+            "  https://www.konux.com/company  ",  # stray whitespace
+        ],
+    )
+    def test_genuine_noise_is_still_normalized_away(self, variant):
+        assert normalize_page_url(variant) == "https://www.konux.com/company"
+
+    def test_www_is_not_stripped(self):
+        # Same choice as the jobs eval: silently merging hosts would hide a scraper
+        # bug. It is also why a hand-written label must be copied, not typed.
+        assert normalize_page_url("https://marvelfusion.com") != normalize_page_url(
+            "https://www.marvelfusion.com"
+        )
 
 
 class TestRecallAtK:
@@ -67,8 +106,16 @@ class TestRecallAtK:
         assert recall_at_k([], {MARVEL}, k=2) == 0.0
 
     def test_urls_are_normalized_on_both_sides(self):
-        # Trailing slash, host case and a tracking param must not split the key.
-        assert recall_at_k(["https://MARVELFUSION.com/?utm_source=x"], {"https://marvelfusion.com"}, k=1) == 1.0
+        # Trailing slash and host case must not split the key.
+        assert recall_at_k(["https://MARVELFUSION.com/"], {"https://marvelfusion.com"}, k=1) == 1.0
+
+    def test_a_tracking_param_does_split_the_key(self):
+        # The accepted cost of keeping the query string. For a job listing this
+        # would be wrong (the jobs eval strips it on purpose), but page URLs in this
+        # corpus come from companies.yaml and carry no tracking params, whereas the
+        # 21 news feeds are distinguished by nothing else. Documented rather than
+        # worked around: if scraped page URLs ever grow utm params, revisit this.
+        assert recall_at_k(["https://marvelfusion.com/?utm_source=x"], {"https://marvelfusion.com"}, k=1) == 0.0
 
     def test_unlabelled_question_raises(self):
         with pytest.raises(ValueError, match="unlabelled"):

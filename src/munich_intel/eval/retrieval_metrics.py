@@ -4,8 +4,10 @@ Same discipline as `metrics.py` (the jobs eval): ordered list in, number out, no
 disk, no network, no Qdrant. Everything here is testable against hand-computed
 examples in tests/test_retrieval_metrics.py.
 
-The unit of comparison is the *normalized page URL*, reusing `metrics.normalize_url`
-so both evals agree on what "the same page" means. This is load-bearing, not tidiness:
+The unit of comparison is the *normalized page URL* — see `normalize_page_url`, which
+is deliberately not the jobs eval's `metrics.normalize_url` (that one drops the query
+string, which merges all 21 Google News feeds into one key). Keying on URL at all is
+load-bearing, not tidiness:
 Qdrant point IDs are `uuid5(slug, url, chunk_index)`, so any change to `chunk_size`
 renumbers every chunk and invalidates every ID. Phase 3c changes `chunk_size` on
 purpose. URLs survive that; IDs do not. Never key a gold label on an ID or an index.
@@ -18,8 +20,34 @@ eval exists to measure.
 """
 
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
-from munich_intel.eval.metrics import normalize_url
+
+def normalize_page_url(url: str) -> str:
+    """Canonical form of a PAGE url, for comparing gold against retrieved.
+
+    Deliberately NOT `metrics.normalize_url`, which the jobs eval uses. That one
+    drops the query string, which is right for a job listing — the same posting
+    appears as `?language=en` or `?utm_source=...` and none of that changes which
+    job is meant. Applied to this corpus it is catastrophic: every Google News feed
+    is `https://news.google.com/rss/search?q=<company>`, differing ONLY in the query,
+    so all 21 of them collapse to one key. Measured on the real corpus, that turned
+    74 distinct pages into 54, and made every news-labelled question match any
+    company's news feed — Twaice's question scored a perfect 1.00 off some other
+    company's headlines.
+
+    So this keeps the query string and normalizes only what is genuinely noise:
+    scheme and host case, a trailing slash, and the fragment. Like `normalize_url`
+    it does not strip "www." or unify http/https, because those can be different
+    hosts and silently merging them would hide a scraper bug.
+
+    What both functions share is the property that actually matters: they key on the
+    URL, never on a Qdrant point id or chunk index, so a gold label survives the
+    chunk_size change in Phase 3c.
+    """
+    parts = urlsplit(url.strip())
+    path = parts.path.rstrip("/")
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, parts.query, ""))
 
 
 @dataclass(frozen=True)
@@ -47,7 +75,7 @@ def _top_k_urls(retrieved_urls: list[str], k: int) -> list[str]:
     """
     if k < 1:
         raise ValueError(f"k must be >= 1, got {k}")
-    return [normalize_url(url) for url in retrieved_urls[:k]]
+    return [normalize_page_url(url) for url in retrieved_urls[:k]]
 
 
 def _check_relevant(relevant_urls: set[str]) -> set[str]:
@@ -63,7 +91,7 @@ def _check_relevant(relevant_urls: set[str]) -> set[str]:
             "relevant_urls is empty — an unlabelled question cannot be scored. "
             "Label it in data/eval/questions.yaml or exclude it from the run."
         )
-    return {normalize_url(url) for url in relevant_urls}
+    return {normalize_page_url(url) for url in relevant_urls}
 
 
 def recall_at_k(retrieved_urls: list[str], relevant_urls: set[str], k: int) -> float:
@@ -100,7 +128,7 @@ def mrr(retrieved_urls: list[str], relevant_urls: set[str]) -> float:
     """
     relevant = _check_relevant(relevant_urls)
     for rank, url in enumerate(retrieved_urls, start=1):
-        if normalize_url(url) in relevant:
+        if normalize_page_url(url) in relevant:
             return 1 / rank
     return 0.0
 
