@@ -263,3 +263,35 @@ Two questions were reworded during labelling because their pages could not answe
 them: OroraTech's careers page lists no vacancies and NavVis's lists benefits rather
 than openings, so "what roles are they hiring for" was unanswerable from the index —
 a scraping gap, not a retrieval one.
+
+## 3a — `source_type` in the payload (enabling work)
+
+`indexer.ingest()` now writes `source_type` (site | news | careers). `ScrapedPage`
+has carried it since the V2 scraper split, but it never reached Qdrant, so nothing
+downstream could tell a company's own page from a Google News feed — and news is 39%
+of the index.
+
+Re-ingested all 74 pages with `python scripts/reingest.py --force --apply`.
+158/158 points carry it: site 69, news 61, careers 28.
+
+| | R@2 | R@5 | R@10 | MRR | C@2 | C@10 |
+|---|---|---|---|---|---|---|
+| baseline | 0.35 | 0.58 | 0.65 | 0.77 | 1.2 | 3.6 |
+| 3a | 0.35 | 0.58 | 0.65 | 0.77 | 1.2 | 3.6 |
+| **delta** | **0.00** | **0.00** | **0.00** | **0.00** | **0.00** | **0.00** |
+
+Identical in every cell, which is the intended result: 3a changes what the payload
+*contains*, not what the retriever *does*. It is also a free determinism check —
+every page was re-embedded from scratch and every score reproduced exactly.
+
+**What it caught.** Writing a key into the payload is not enough to filter on it.
+Qdrant returns `400 Bad Request: Index required but not found for "source_type"`
+until a keyword payload index exists, so a source-aware query would have failed at
+runtime while the data looked perfectly correct in every payload dump.
+`setup_collection` now creates keyword indexes for `source_type` and `company_slug`,
+idempotently and on existing collections, since this one predates both keys.
+Verified by filtering: site 69 / news 61 / careers 28, and `company_slug='konux'`
+returns 6.
+
+This is the whole argument for the phase's "confirm it is queryable" step being
+separate from "confirm it is present".
