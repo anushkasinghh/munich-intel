@@ -15,6 +15,7 @@ the largest k), so recall@2 and recall@10 can never disagree about what came bac
 
 import argparse
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -42,7 +43,8 @@ from munich_intel.eval.retrieval_metrics import (
     threshold_gap,
     top_score,
 )
-from munich_intel.retriever import retrieve
+from munich_intel.reranker import load_reranker, rerank
+from munich_intel.retriever import cap_per_key, retrieve
 
 console = Console()
 
@@ -142,6 +144,14 @@ def main() -> None:
         "capping and reproduce the pre-3b baseline.",
     )
     parser.add_argument(
+        "--rerank",
+        action="store_true",
+        help="retrieve --rerank-candidates chunks, then reorder them with the "
+        "BAAI/bge-reranker-v2-m3 cross-encoder before capping. Slower; the eval "
+        "reports the latency cost alongside the recall gain.",
+    )
+    parser.add_argument("--rerank-candidates", type=int, default=20)
+    parser.add_argument(
         "--cap-key",
         default="url",
         choices=["url", "company_slug"],
@@ -176,19 +186,42 @@ def main() -> None:
     per_company = args.per_company or None
     global _CAP_LABEL
     _CAP_LABEL = f"{per_company}/{args.cap_key}" if per_company else "off"
-    results = [
-        score(
-            q,
-            retrieve(
+    if args.rerank:
+        _CAP_LABEL += f", rerank {args.rerank_candidates}->{FETCH_K}"
+
+    # Loaded once, outside the timing loop: a 2.2GB model load is a one-off startup
+    # cost, not a per-query cost, and folding it in would misreport the latency the
+    # app would actually pay.
+    reranker = load_reranker() if args.rerank else None
+
+    results, latencies = [], []
+    for q in todo:
+        start = time.perf_counter()
+        if reranker is not None:
+            # Rerank BEFORE capping: the cap should choose among the best-ordered
+            # candidates, not lock in the bi-encoder's order and rerank the leftovers.
+            candidates = retrieve(
+                q.question, model, client, settings.collection_name,
+                args.rerank_candidates, per_company=None,
+            )
+            hits = rerank(q.question, candidates, FETCH_K, reranker)
+            if per_company:
+                hits = cap_per_key(hits, FETCH_K, per_key=per_company, key=args.cap_key)
+        else:
+            hits = retrieve(
                 q.question, model, client, settings.collection_name, FETCH_K,
                 per_company=per_company, cap_key=args.cap_key,
-            ),
-        )
-        for q in todo
-    ]
+            )
+        latencies.append(time.perf_counter() - start)
+        results.append(score(q, hits))
 
     _print_per_question(results)
     _print_pooled(results)
+    console.print(
+        f"[dim]latency per question: mean {sum(latencies)/len(latencies)*1000:.0f} ms, "
+        f"max {max(latencies)*1000:.0f} ms "
+        f"({'with' if args.rerank else 'without'} reranking, embedding + Qdrant included)[/dim]"
+    )
     _print_controls(results)
     _print_backlog(backlog)
 

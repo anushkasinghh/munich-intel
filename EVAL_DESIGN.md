@@ -356,7 +356,83 @@ cap, so k=5 costs roughly **2,600 tokens** of context and k=10 roughly **5,300**
 against Groq's free-tier ~6,000 TPM. k=5 leaves room for the system prompt (~150
 tokens) and the answer; k=10 does not, once more than one query lands in a minute.
 
-Worth correcting the old note in `config.py` that said k=5 "asked for ~12800 tokens":
-that cannot be one request at this chunk size. TPM is per *minute* and cumulative
-across requests, so it was measuring several queries, not one oversized one. k=10
-waits for 3c to shrink the chunks.
+> **Correction, made in 3c.** This section originally claimed the old `config.py`
+> note ("k=5 asked for ~12800 tokens") could not describe one request, and put it
+> down to TPM being cumulative. That was wrong, and the token estimates above are
+> wrong with it. They were derived from *word* counts, which do not apply to news
+> chunks: Google News wraps every article in a ~290-character base64 redirect URL
+> that counts as one "word" but ~75 tokens. Measured by character count, a 512-word
+> news chunk is **~1802 tokens**, not ~525. The original note was right. See 3c.
+
+## 3c — smaller chunks, one chunk per news article
+
+Two changes. Site and careers pages drop from 512-word chunks to 200/25. News feeds
+stop being chunked by word count at all: `chunker.chunk_rss` emits one chunk per
+article and strips the Google News redirect URL.
+
+**The redirect strip is the bigger win, and it was not in the plan.** Google News
+wraps every article in a ~290-character base64 URL. Measured across all 902 blocks
+in this corpus, those links were **64% of the RSS text by character count**. They are
+meaningless to the embedder and to the generator — nobody reads a redirect blob — but
+they were being embedded and would have been sent to the LLM as context.
+
+| | chunks | mean tokens/chunk |
+|---|---|---|
+| before (512w/50, no RSS split) | 158 | **1,073** |
+| after (200w/25 + per-article) | 1,110 | **88** |
+
+A news chunk went from **~1,802 tokens to ~39**. Context cost at each k:
+
+| k | before | after |
+|---|---|---|
+| 2 | 2,146 | 177 |
+| 5 | 5,365 | 442 |
+| 8 | 8,584 | 707 |
+| 10 | 10,730 | 884 |
+
+The plan's requirement — *k=8 small chunks must cost fewer tokens than k=2 large
+ones* — **holds by a wide margin**: 707 vs 2,146. So does k=10 at 884.
+
+### Scores at fixed k
+
+| | R@2 | R@5 | R@10 | MRR | C@2 | C@10 |
+|---|---|---|---|---|---|---|
+| 3b | 0.35 | 0.62 | 0.75 | 0.78 | 1.2 | 4.7 |
+| 3c | **0.42** | 0.60 | 0.72 | **0.81** | **1.6** | 4.6 |
+
+Mixed, and worth being precise about. R@2 gains +0.07 and MRR +0.03 — smaller chunks
+are sharper, so the right page ranks higher. R@5 and R@10 slip slightly, and
+comparison questions regress at k=10 (1.00 → 0.85): a 200-word chunk carries less
+context, so a page that previously matched on any of 512 words now needs the query to
+hit the right 200.
+
+### Reading it at fixed *token cost* instead — this is the real result
+
+Comparing R@10 before and after is the wrong comparison, because the two cost wildly
+different amounts. At a fixed budget of roughly 2,000 tokens:
+
+| | what 2,000 tokens buys | headline recall |
+|---|---|---|
+| before 3c | k=2 | **0.35** |
+| after 3c | k=10 (884 tok), with room to spare | **0.72** |
+
+**Recall roughly doubles at equal token cost.** That is what shrinking chunks was
+for, and it is invisible in any fixed-k table.
+
+### The threshold gap got worse
+
+−0.031 → **−0.073**. Shorter chunks make spurious matches score higher, because a
+26-word headline can align tightly with a query it has nothing to do with. Score
+filtering was already impossible; it is now further out of reach. Only 3d can move
+this.
+
+### Plumbing gotcha worth recording
+
+The first 3c re-ingest silently used the OLD chunk size for site and careers pages.
+`config.py`'s default was changed to 200, but `.env` carries `CHUNK_SIZE=512`, and
+Pydantic `BaseSettings` gives the `.env` file precedence over the code default. The
+news split applied (it ignores `chunk_size`), so the run looked successful — 999
+points instead of 158 — while 39 of 74 pages were chunked at the old size. Caught by
+comparing each page's indexed chunk count against a re-chunk of `data/raw/`.
+`.env` and `.env.example` now carry 200/25, and `reingest.py` gained `--source` so
+only the affected pages had to be re-embedded rather than all 902 news chunks again.

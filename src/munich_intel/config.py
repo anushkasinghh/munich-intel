@@ -19,17 +19,20 @@ class Settings(BaseSettings):
     llm_provider: str = "groq"  # "groq" | "ollama"
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-20b"
-    chunk_size: int = 512
-    chunk_overlap: int = 50
-    # chunk_size counts WORDS. Measured on the live index: chunks average 389 words
-    # (~525 tokens) with a 512-word cap, so k=5 costs ~2600 tokens of context and
-    # k=10 ~5300, against Groq's free-tier ~6000 TPM. Note TPM is per MINUTE and
-    # cumulative across requests, which is what the earlier "k=5 asked for 12800
-    # tokens" note was really measuring — not one oversized request.
+    # Words, and applied to site/careers pages only — news feeds are chunked per
+    # article by chunker.chunk_rss, which ignores these. Reduced 512/50 -> 200/25 in
+    # Phase 3c so more distinct pages fit inside the same token budget.
+    chunk_size: int = 200
+    chunk_overlap: int = 25
+    # Estimate token cost by CHARACTERS, never by word count. Google News wraps each
+    # article in a ~290-character base64 redirect URL, which is one "word" but ~75
+    # tokens, and those links were 64% of every news chunk by character count. A
+    # 512-word news chunk was ~1802 tokens, not the ~525 its word count implied —
+    # which is exactly why k=5 once cost ~12800 tokens and 413'd.
     #
-    # Raised 2 -> 5 in Phase 3b: the eval showed recall@2 0.35 vs recall@5 0.62, and
-    # single-company recall reaching 1.00 at k=5. k=10 would buy another +0.13 but
-    # doubles the token cost, so it waits for 3c to shrink chunks first.
+    # 3c fixed the cause rather than the symptom: news is now chunked per article
+    # with the redirect stripped (~39 tokens a chunk), and site/careers chunks are
+    # 200 words (~325 tokens). Raised 2 -> 5 in 3b on recall@2 0.35 vs recall@5 0.62.
     retrieval_top_k: int = 5
     # Secret token required in X-Ingest-Token header to call POST /ingest.
     # Set a random string here and in HF Space secrets. Never leave empty in production.

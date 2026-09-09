@@ -47,12 +47,15 @@ def build_client() -> QdrantClient:
     return QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
 
 
-def load_raw(only: set[str] | None) -> list[ScrapedPage]:
+def load_raw(only: set[str] | None, sources: set[str] | None = None) -> list[ScrapedPage]:
     pages = []
     for path in sorted(RAW_DIR.glob("*.json")):
         page = ScrapedPage(**json.loads(path.read_text()))
-        if only is None or page.company_slug in only:
-            pages.append(page)
+        if only is not None and page.company_slug not in only:
+            continue
+        if sources is not None and page.source_type not in sources:
+            continue
+        pages.append(page)
     return pages
 
 
@@ -60,6 +63,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="actually write (default: dry run)")
     parser.add_argument("--only", help="comma-separated company slugs to limit the sync to")
+    parser.add_argument(
+        "--source",
+        help="comma-separated source_types (site,news,careers) to limit the sync to. "
+        "Useful when only one kind of page needs re-chunking — changing chunk_size "
+        "affects site/careers but not news, which is chunked per article.",
+    )
     parser.add_argument(
         "--force",
         action="store_true",
@@ -71,7 +80,8 @@ def main() -> None:
     args = parser.parse_args()
 
     only = set(args.only.split(",")) if args.only else None
-    pages = load_raw(only)
+    sources = set(args.source.split(",")) if args.source else None
+    pages = load_raw(only, sources)
     if not pages:
         console.print(f"[red]No pages in {RAW_DIR}" + (f" for {args.only}" if only else "") + "[/red]")
         return
@@ -90,11 +100,11 @@ def main() -> None:
     # Scope the stale check to the same slugs as --only, so a partial run never
     # proposes deleting a company it was not asked to look at.
     stale_ids = [
-        pid
+        point.id
         for point in points
         if point.payload["url"] not in on_disk
         and (only is None or point.payload["company_slug"] in only)
-        for pid in [point.id]
+        and (sources is None or point.payload.get("source_type") in sources)
     ]
     to_ingest = [p for p in pages if args.force or p.url not in indexed]
 

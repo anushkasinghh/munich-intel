@@ -4,7 +4,7 @@ import uuid
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PayloadSchemaType, PointStruct, VectorParams
 
-from munich_intel.chunker import chunk_text
+from munich_intel.chunker import chunk_rss, chunk_text
 from munich_intel.config import settings
 from munich_intel.embedder import embed, load_model
 from munich_intel.scraper import ScrapedPage
@@ -45,7 +45,12 @@ def _point_id(company_slug: str, url: str, chunk_index: int) -> str:
 
 
 def ingest(page: ScrapedPage, client: QdrantClient, collection_name: str) -> int:
-    chunks = chunk_text(page.page_text, settings.chunk_size, settings.chunk_overlap)
+    # A news feed is a list of independent articles, not prose — splitting it by
+    # word count averages ~19 unrelated headlines into one vector. See chunker.chunk_rss.
+    if page.source_type == "news":
+        chunks = chunk_rss(page.page_text)
+    else:
+        chunks = chunk_text(page.page_text, settings.chunk_size, settings.chunk_overlap)
     if not chunks:
         return 0
 
