@@ -70,9 +70,22 @@ def _clean_careers_html(html: str, base_url: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
-def news_url(company_name: str) -> str:
-    """Google News RSS search for a company — free, no API key, one formula for every company."""
-    query = quote_plus(f'"{company_name}"')
+def news_url(company_name: str, news_query: str | None = None) -> str:
+    """Google News RSS search for a company — free, no API key.
+
+    The default is the quoted company name, which works for a distinctive one
+    ("Marvel Fusion", "Isar Aerospace"). It fails badly for a common word: a bare
+    `"Viktor"` returned 100 articles of which 2 were the company (the rest were
+    Arsenal's Viktor Gyokeres), and `"Quantum Systems"` returned quantum-physics
+    coverage. Measured rates before the fix: viktor 2%, allo 2%, ocell 4%,
+    quantum-systems 11% on-topic.
+
+    `news_query` overrides the search string for those companies, set per company in
+    companies.yaml. It is opt-in rather than a formula applied to everyone (say,
+    always appending "Munich") because any extra required term also drops legitimate
+    articles that omit it — a cost worth paying only where the bare name is ambiguous.
+    """
+    query = quote_plus(news_query or f'"{company_name}"')
     return f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
 
 
@@ -127,8 +140,10 @@ def scrape_page(url: str, company_name: str, company_slug: str, category: str = 
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type(_RETRYABLE),
 )
-def scrape_news(company_name: str, company_slug: str, category: str = "") -> ScrapedPage:
-    url = news_url(company_name)
+def scrape_news(
+    company_name: str, company_slug: str, category: str = "", news_query: str | None = None
+) -> ScrapedPage:
+    url = news_url(company_name, news_query)
     with httpx.Client(headers=_HEADERS, timeout=10, follow_redirects=True) as client:
         response = client.get(url)
         response.raise_for_status()
@@ -201,7 +216,7 @@ def scrape_company(company_config: dict) -> list[ScrapedPage]:
             logger.warning("Careers scrape failed for %s (%s)", name, careers_url, exc_info=True)
 
     try:
-        pages.append(scrape_news(name, slug, category))
+        pages.append(scrape_news(name, slug, category, company_config.get("news_query")))
     except Exception:
         logger.warning("News scrape failed for %s", name, exc_info=True)
 

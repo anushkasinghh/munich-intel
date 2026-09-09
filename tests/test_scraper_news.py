@@ -26,6 +26,23 @@ def test_news_url_quotes_the_company_name():
     assert "%22" in url  # company name is quoted so multi-word names aren't matched as separate terms
 
 
+def test_news_query_overrides_the_company_name():
+    # A bare quoted name is useless for a company called "Viktor": the feed came back
+    # 98% Arsenal footballer. companies.yaml supplies a disambiguated query instead.
+    url = news_url("Viktor", '"Viktor" AI Slack')
+    assert "Slack" in url
+    assert "AI" in url
+
+
+def test_news_query_is_url_encoded_like_the_default():
+    # The override goes through the same quote_plus, so quotes and spaces in a
+    # hand-written query cannot produce a malformed URL.
+    url = news_url("allO", '"allO" restaurant Munich POS')
+    assert " " not in url
+    assert '"' not in url
+    assert "%22allO%22" in url
+
+
 def test_clean_rss_extracts_one_block_per_item():
     text = _clean_rss(SAMPLE_RSS)
     blocks = text.split("\n---\n")
@@ -90,7 +107,7 @@ def test_scrape_company_always_appends_a_news_page():
         pages = scrape_company(config)
 
     mock_scrape_page.assert_called_once_with("https://reverion.com", "Reverion", "reverion", "energy")
-    mock_scrape_news.assert_called_once_with("Reverion", "reverion", "energy")
+    mock_scrape_news.assert_called_once_with("Reverion", "reverion", "energy", None)
     assert pages == [site_page, news_page]
 
 
@@ -111,5 +128,5 @@ def test_scrape_company_skips_blocked_site_but_still_scrapes_news():
         pages = scrape_company(config)
 
     mock_scrape_page.assert_not_called()
-    mock_scrape_news.assert_called_once_with("Twaice", "twaice", "battery-analytics")
+    mock_scrape_news.assert_called_once_with("Twaice", "twaice", "battery-analytics", None)
     assert pages == [news_page]

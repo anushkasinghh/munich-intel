@@ -163,13 +163,13 @@
   kind: single-company
   relevant_urls:
     - "https://quantum-systems.com/career-at-quantum-systems/"
+    - "https://news.google.com/rss/search?q=%22Quantum+Systems%22+UAV+OR+drone+Munich&hl=en-US&gl=US&ceid=US:en"
   notes: >-
-    NOT the same shape as Helsing after all. Quantum Systems has no site page, and
-    its news feed is CONTAMINATED: only 11 of 102 headlines are about the company —
-    the rest are quantum-physics articles (the RSS query "Quantum Systems" catches
-    "quantum matter", "quantum computing"). So the careers page is the only page in
-    the index that says what the company makes ("AI-powered unmanned aerial
-    systems"), and it is the sole label.
+    No site page; careers plus news, like Helsing. The news feed was contaminated
+    when this was first labelled (11 of 102 headlines on-topic, the rest
+    quantum-physics articles) and was re-scraped with a disambiguated query — now
+    32 of 44, headlined "Europe's $8B Defence-Drone Unicorn". Both pages say what
+    the company makes, so both are labelled.
 
 - id: twaice-battery
   question: "What does TWAICE do?"
@@ -296,11 +296,12 @@
     - "https://helsing.ai/careers"
     - "https://news.google.com/rss/search?q=%22Helsing%22&hl=en-US&gl=US&ceid=US:en"
     - "https://quantum-systems.com/career-at-quantum-systems/"
+    - "https://news.google.com/rss/search?q=%22Quantum+Systems%22+UAV+OR+drone+Munich&hl=en-US&gl=US&ceid=US:en"
   notes: >-
-    helsing and quantum-systems; neither has a site page. Helsing's careers page and
-    news feed both establish the defence work. Quantum Systems' news feed is
-    contaminated with quantum-physics articles (11 of 102 headlines on-topic), so
-    only its careers page is labelled.
+    helsing and quantum-systems; neither has a site page, so careers and news carry
+    both. Quantum Systems' news feed was re-scraped with a disambiguated query
+    before labelling was finalised (11 of 102 headlines on-topic before, 32 of 44
+    after), which is why its news page is labelled here.
 
 - id: climate-energy-companies
   question: "Which Munich startups work on clean energy or climate technology?"
@@ -382,10 +383,10 @@
     - "https://helsing.ai/careers"
     - "https://news.google.com/rss/search?q=%22Helsing%22&hl=en-US&gl=US&ceid=US:en"
     - "https://quantum-systems.com/career-at-quantum-systems/"
+    - "https://news.google.com/rss/search?q=%22Quantum+Systems%22+UAV+OR+drone+Munich&hl=en-US&gl=US&ceid=US:en"
   notes: >-
-    The hardest comparison in the set: neither company has a site page, and Quantum
-    Systems' news feed is 89% quantum-physics noise, so its careers page carries the
-    whole burden of one side.
+    The hardest comparison in the set: neither company has a site page, so both
+    sides rest on careers and news pages rather than a canonical "about" page.
 
 - id: compare-ororatech-ocell
   question: "What is the difference between OroraTech and Ocell?"
@@ -396,9 +397,9 @@
     - "https://ocell.io"
   notes: >-
     Both are satellite-data companies (fire vs forestry), so their embeddings sit
-    close together. Tests whether near-neighbours crowd each other out. Ocell has
-    only one usable page: its news feed is contaminated (1 of 21 headlines is the
-    company — the rest are about a Spanish climbing crag called Cova de Ocell).
+    close together. Tests whether near-neighbours crowd each other out. Ocell rests
+    on its single site page: even after re-scraping with a disambiguated query its
+    news feed is only 3 of 9 on-topic, because the company has almost no press.
 
 - id: compare-isar-marvel
   question: "Which is further along, Isar Aerospace or Marvel Fusion?"

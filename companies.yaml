@@ -88,6 +88,7 @@ companies:
 
   - name: Quantum Systems
     slug: quantum-systems
+    news_query: '"Quantum Systems" UAV OR drone Munich'
     urls:
       # quantum-systems.com returns 403 (bot-protected) — skipped like Twaice
     careers_url: https://quantum-systems.com/career-at-quantum-systems/
@@ -138,6 +139,7 @@ companies:
 
   - name: Viktor
     slug: viktor
+    news_query: '"Viktor" AI Slack'
     urls:
       - https://getviktor.com
       - https://getviktor.com/about
@@ -149,6 +151,7 @@ companies:
 
   - name: allO
     slug: allo
+    news_query: '"allO" restaurant Munich POS'
     urls:
       - https://allo.restaurant
       - https://allo.restaurant/about
@@ -200,6 +203,7 @@ companies:
 
   - name: OCELL
     slug: ocell
+    news_query: '"OCELL" forest'
     urls:
       - https://ocell.io
     careers_url: https://www.ocell.io/en-us/career
