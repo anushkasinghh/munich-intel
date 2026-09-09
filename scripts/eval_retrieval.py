@@ -56,6 +56,8 @@ KIND_ORDER = ("single-company", "multi-company", "comparison", "aggregation")
 
 BLANK = "—"
 
+_CAP_LABEL = "off"
+
 
 def build_client() -> QdrantClient:
     """Same connection logic as the rest of the app: qdrant_url wins if set."""
@@ -132,6 +134,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--questions", type=Path, default=QUESTIONS_PATH)
     parser.add_argument("--ids", help="comma-separated question ids (default: all labelled)")
+    parser.add_argument(
+        "--per-company",
+        type=int,
+        default=2,
+        help="max chunks kept from any one company (default: 2). Use 0 to disable "
+        "capping and reproduce the pre-3b baseline.",
+    )
+    parser.add_argument(
+        "--cap-key",
+        default="url",
+        choices=["url", "company_slug"],
+        help="what the cap counts: 'url' (default, one page) or 'company_slug'. "
+        "Measured: per-company capping raises diversity but LOSES recall, because "
+        "recall counts distinct pages and most answers live in 2-3 pages of one "
+        "company. See EVAL_DESIGN.md 3b.",
+    )
     args = parser.parse_args()
 
     questions = load_questions(args.questions)
@@ -152,8 +170,20 @@ def main() -> None:
     model = load_model()
     client = build_client()
 
+    # Capping is prefix-stable: the greedy first pass fills in score order, so the
+    # top 2 of a capped top-10 are the same two the app would get asking for k=2.
+    # That is what lets one fetch at FETCH_K serve recall@2, @5 and @10 alike.
+    per_company = args.per_company or None
+    global _CAP_LABEL
+    _CAP_LABEL = f"{per_company}/{args.cap_key}" if per_company else "off"
     results = [
-        score(q, retrieve(q.question, model, client, settings.collection_name, FETCH_K))
+        score(
+            q,
+            retrieve(
+                q.question, model, client, settings.collection_name, FETCH_K,
+                per_company=per_company, cap_key=args.cap_key,
+            ),
+        )
         for q in todo
     ]
 
@@ -166,7 +196,8 @@ def main() -> None:
 def _print_per_question(results: list[dict]) -> None:
     table = Table(
         title=f"Retrieval vs. gold (top_k in use: {settings.retrieval_top_k}, "
-        f"chunk {settings.chunk_size}w/{settings.chunk_overlap})  "
+        f"chunk {settings.chunk_size}w/{settings.chunk_overlap}, "
+        f"cap {_CAP_LABEL})  "
         f"[dim]† aggregation, expected to fail · ‡ negative control[/dim]"
     )
     # The id column folds rather than truncating: in a narrow terminal rich shrinks

@@ -21,11 +21,16 @@ class Settings(BaseSettings):
     groq_model: str = "openai/gpt-oss-20b"
     chunk_size: int = 512
     chunk_overlap: int = 50
-    # chunk_size counts words, so a retrieved chunk averages ~1150 tokens. At k=5 a
-    # single query asked Groq for ~12800 tokens and 413'd against the free tier's
-    # 8000 TPM budget. k=2 leaves room for the answer. Revisit once eval can measure
-    # what the lower coverage costs.
-    retrieval_top_k: int = 2
+    # chunk_size counts WORDS. Measured on the live index: chunks average 389 words
+    # (~525 tokens) with a 512-word cap, so k=5 costs ~2600 tokens of context and
+    # k=10 ~5300, against Groq's free-tier ~6000 TPM. Note TPM is per MINUTE and
+    # cumulative across requests, which is what the earlier "k=5 asked for 12800
+    # tokens" note was really measuring — not one oversized request.
+    #
+    # Raised 2 -> 5 in Phase 3b: the eval showed recall@2 0.35 vs recall@5 0.62, and
+    # single-company recall reaching 1.00 at k=5. k=10 would buy another +0.13 but
+    # doubles the token cost, so it waits for 3c to shrink chunks first.
+    retrieval_top_k: int = 5
     # Secret token required in X-Ingest-Token header to call POST /ingest.
     # Set a random string here and in HF Space secrets. Never leave empty in production.
     ingest_secret: str = ""

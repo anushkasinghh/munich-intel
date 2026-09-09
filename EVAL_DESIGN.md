@@ -295,3 +295,68 @@ returns 6.
 
 This is the whole argument for the phase's "confirm it is queryable" step being
 separate from "confirm it is present".
+
+## 3b — per-key capping, and a negative result worth more than the change
+
+The brief specified: retrieve `3*k` candidates, then keep at most 2 chunks per
+`company_slug`. Implemented as `retriever.cap_per_key` — a pure function on an
+already-ranked list, unit-tested without Qdrant (`tests/test_retriever_capping.py`).
+
+Measured at identical k, all three variants on the same index:
+
+| variant | R@2 | R@5 | R@10 | MRR | C@2 | C@5 | C@10 |
+|---|---|---|---|---|---|---|---|
+| baseline, no cap | 0.35 | 0.58 | 0.65 | 0.77 | 1.2 | 2.1 | 3.6 |
+| **cap 2 per company** (as specified) | 0.35 | **0.40** | **0.42** | 0.73 | 1.2 | **3.3** | **6.6** |
+| **cap 2 per page** (shipped) | 0.35 | **0.62** | **0.75** | 0.78 | 1.2 | 2.6 | 4.7 |
+
+### Per-company capping made things worse — this is the finding
+
+It did exactly what it promised on diversity: C@10 nearly doubled, 3.6 → **6.6**.
+And it **lost recall everywhere**, including on the multi-company questions it was
+designed to fix (R@10 0.27 → 0.18). Single-company recall collapsed 1.00 → **0.60**.
+
+The cause is a unit mismatch. **Recall counts distinct pages; the cap counted
+companies.** Sixteen of the 29 questions are single-company, and most are answered by
+two or three pages *of the same company* — `konux.com` and `konux.com/company`,
+`ororatech.com` and `/about-us`. A cap of 2 per company means Konux can contribute at
+most two chunks in total, and if both come from `konux.com` then `konux.com/company`
+is unreachable at any k. The cap was starving the exact pages recall was counting.
+
+Diversity went up and answers got worse, which is precisely why both metrics are
+reported side by side. A diversity-only report would have called this a success.
+
+### Keying the cap on `url` instead
+
+Same mechanism, same code path, one field changed — and it fixes the monopoly it was
+aimed at *without* the side effect, because the original failure was repeated chunks
+of one **page**, not one company:
+
+- headline R@10 **0.65 → 0.75**
+- comparison R@10 **0.62 → 1.00** — every comparison question now finds every
+  labelled page by k=10, where the baseline found under two thirds
+- multi-company R@10 0.27 → **0.32**
+- single-company **unchanged at 1.00** — no regression
+- C@10 3.6 → 4.7 — diversity still improves, just less than the per-company cap
+  bought at the cost of correctness
+
+Shipped as the default (`cap_key="url"`). `cap_per_company` is kept as a named
+wrapper so the negative result stays reproducible with
+`--per-company 2 --cap-key company_slug` rather than becoming a discarded idea
+nobody can check.
+
+### `retrieval_top_k` 2 → 5
+
+Justified by the same table: R@2 0.35 vs R@5 0.62, and single-company recall reaching
+1.00 at k=5. Not raised to 10, which would add another +0.13, because of the token
+budget.
+
+Measured on the live index: chunks average 389 words (~525 tokens) against a 512-word
+cap, so k=5 costs roughly **2,600 tokens** of context and k=10 roughly **5,300**,
+against Groq's free-tier ~6,000 TPM. k=5 leaves room for the system prompt (~150
+tokens) and the answer; k=10 does not, once more than one query lands in a minute.
+
+Worth correcting the old note in `config.py` that said k=5 "asked for ~12800 tokens":
+that cannot be one request at this chunk size. TPM is per *minute* and cumulative
+across requests, so it was measuring several queries, not one oversized one. k=10
+waits for 3c to shrink the chunks.
