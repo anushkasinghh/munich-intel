@@ -436,3 +436,114 @@ points instead of 158 — while 39 of 74 pages were chunked at the old size. Cau
 comparing each page's indexed chunk count against a re-chunk of `data/raw/`.
 `.env` and `.env.example` now carry 200/25, and `reingest.py` gained `--source` so
 only the affected pages had to be re-embedded rather than all 902 news chunks again.
+
+## 3d — cross-encoder reranking: best ranking, unusable latency
+
+`BAAI/bge-reranker-v2-m3`. Retrieve 20 candidates with the bi-encoder, score every
+(question, chunk) pair jointly with the cross-encoder, keep the best 10, then cap
+per page. `reranker.rerank_by_scores` is the pure ordering step, unit-tested without
+the 2.2GB model; `--rerank` on the eval CLI switches it on and reports latency.
+
+| | R@2 | R@5 | R@10 | MRR | C@10 | latency / question |
+|---|---|---|---|---|---|---|
+| 3c | 0.42 | 0.60 | 0.72 | 0.81 | 4.6 | **0.8 s** |
+| 3d | **0.48** | **0.68** | 0.70 | **0.89** | 3.8 | **33 s** (45 s under CPU contention) |
+
+Two runs, identical scores — the reranker is deterministic. Latency is the mean over
+29 questions including embedding and the Qdrant round-trip; the lower figure is the
+clean run, the higher one overlapped with a re-ingest.
+
+### What it does well
+
+MRR 0.81 → **0.89** is the largest single-change MRR gain in the project.
+Single-company questions reach **MRR 1.00**: the right page is at rank 1 for all 16.
+Comparison R@5 goes 0.54 → **0.77**. This is what a cross-encoder is for — it reads
+the question and the chunk together, where the bi-encoder embeds each chunk without
+ever seeing the question.
+
+### Why R@10 does not move
+
+0.72 → 0.70. Reranking reorders a shortlist; it cannot surface a page the bi-encoder
+never retrieved. It fixes *ranking within* the candidates, not *recall of* the
+candidates. That is why MRR and R@2 rise while R@10 stays flat — and why a reranker
+is not a substitute for the retrieval fixes in 3b and 3c, only a layer on top.
+
+### Why it is not shipped: 40× slower
+
+33 seconds per question on CPU — 580 forward passes of a 568M-parameter model per
+query. A chatbot cannot wait that long. The eval measured latency next to recall for
+exactly this reason: on this deployment the reranker is a **measured negative
+result**, not a rejected idea. The model is right and the hardware is wrong; with a
+GPU or a hosted reranking API it is the obvious next component.
+
+Cheaper variants worth trying before that: rerank 8 candidates instead of 20
+(2.5× cheaper, and single-company answers are already in the top 5), a smaller
+cross-encoder (`bge-reranker-base`), or reranking only when the bi-encoder's top
+scores are bunched — a cheap signal that the order is uncertain enough to pay for.
+
+### The threshold gap: still negative, but for a different reason now
+
+| | worst answerable | best control | gap |
+|---|---|---|---|
+| bi-encoder (3c) | 0.508 `compare-helsing-quantum` | 0.581 | −0.073 |
+| reranked (3d) | 0.057 `hardware-sensor-companies` | 0.214 | **−0.156** |
+
+Read the number alone and reranking made it worse. Read the distribution and the
+story flips. Under the cross-encoder:
+
+- `what-is-konux` scores **1.00**, `fusion-companies` **0.96**,
+  `climate-energy-companies` **0.73** — real questions, confidently scored.
+- `no-autonomous-vehicles` scores **0.21** (the Blickfeld "autonomous mining
+  measurement" false friend, exactly as designed) and `no-consumer-social` **0.19**.
+- `hardware-sensor-companies` scores **0.06** — and is the only answerable question
+  below the controls.
+
+So a cutoff at ~0.3 would correctly reject both controls and accept 24 of 25
+answerable questions. The bi-encoder could not do that at any value; its scores for
+real and junk questions overlapped in a 0.41–0.65 band. The cross-encoder separates
+them by an order of magnitude — with one exception.
+
+The exception is instructive. "Which Munich companies build physical sensors or
+hardware?" is phrased at a level of abstraction no chunk states in those words:
+Blickfeld says *LiDAR*, NavVis says *laser scanning*, nobody says *physical
+hardware*. A cross-encoder scores lexical-semantic fit between a question and one
+chunk; it does not do the category abstraction the question asks for. That is not a
+scoring failure so much as a question that wants a taxonomy the corpus does not
+contain — and a hint that this question may belong with the aggregation set.
+
+The gap metric is min-vs-max by design, so one such question keeps it negative. That
+conservatism is right: a threshold that fails on 1 in 25 questions would silently
+refuse to answer real questions in production. Reported as it is.
+
+### Metric correction made during 3d
+
+The first reranked run reported a gap of −0.189, because `threshold_gap` was counting
+aggregation questions as "answerable". They carry gold labels, so they carry a recall
+score — but the eval already declares them unanswerable by retrieval, so treating
+their low top-score as proof that no threshold exists was circular. Corrected to
+compare only questions the corpus can answer against the controls; the un-reranked
+gap re-measured at −0.073 under the new definition, so 3c's conclusion stands.
+
+---
+
+## Summary: every change, one table
+
+Headline = 25 retrievable questions, aggregation and controls excluded. Latency is
+per question, embedding and Qdrant included.
+
+| change | R@2 | R@5 | R@10 | MRR | C@10 | tokens @ k=10 | latency | shipped |
+|---|---|---|---|---|---|---|---|---|
+| baseline (k=2, 512w, no cap) | 0.35 | 0.58 | 0.65 | 0.77 | 3.6 | 10,730 | 0.8 s | — |
+| 3a `source_type` in payload | 0.35 | 0.58 | 0.65 | 0.77 | 3.6 | 10,730 | 0.8 s | yes (enabling) |
+| 3b cap 2/**company** | 0.35 | 0.40 | 0.42 | 0.73 | 6.6 | 10,730 | 0.8 s | **no — regression** |
+| 3b cap 2/**page**, k=5 | 0.35 | 0.62 | 0.75 | 0.78 | 4.7 | 10,730 | 0.8 s | yes |
+| 3c 200w + per-article news | 0.42 | 0.60 | 0.72 | 0.81 | 4.6 | **884** | 0.8 s | yes |
+| 3d + rerank 20→10 | 0.48 | 0.68 | 0.70 | 0.89 | 3.8 | 884 | **33 s** | **no — latency** |
+
+**Net effect of what shipped, baseline → 3c:** at the same ~2,000-token budget,
+recall went from **0.35 (k=2) to 0.72 (k=10)**. MRR 0.77 → 0.81. Comparison
+questions R@10 0.62 → 0.85. Index 158 → 1,110 chunks, mean chunk 1,073 → 88 tokens.
+
+Two changes were measured and not shipped, and both are recorded above so they stay
+reproducible: per-company capping (`--per-company 2 --cap-key company_slug`) and the
+reranker (`--rerank`).
