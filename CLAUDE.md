@@ -11,7 +11,7 @@ about whether Munich AI/deep-tech momentum is real. See [VISION.md](VISION.md) f
 scope and build order, [DECISIONS.md](DECISIONS.md) for architecture rationale and
 tradeoffs, [README.md](README.md) for setup and project structure.
 
-## Current V2 state (as of 2026-08-16)
+## Current V2 state (as of 2026-09-11)
 
 - Scraping (site/careers/news): done. `scrape_company()` isolates each source — one
   failing (e.g. a bot-blocked domain) no longer kills the others.
@@ -53,14 +53,30 @@ tradeoffs, [README.md](README.md) for setup and project structure.
   23 of 23 postings are fabrications. That is the case for ATS-aware scraping.
   The 4-beat momentum question arc is still not evaluated — that needs the news and
   funding entities, and a judge, both deliberately out of this slice's scope.
-- Retrieval index (verified 2026-09-07): Qdrant Cloud collection `munich_intel`
-  holds 173 chunks over 74 distinct URLs and 21 companies, all scraped 2026-08-21.
-  bge-m3, 1024-dim, cosine; `chunk_size=512` *words* (~700 tokens), overlap 50,
-  `retrieval_top_k=2`. Payload keys are company_name, company_slug, url, chunk_text,
-  chunk_index, scraped_at, category — note `ScrapedPage.source_type` exists
-  (site/news/careers) but `indexer.ingest()` does not write it, so news pages
-  cannot be filtered or down-weighted at query time. `data/raw/` holds all 74
-  pages *with* source_type, so a re-ingest can add it without re-scraping.
+- Retrieval eval (done 2026-09-11, branch `eval-retrieval`): 29 hand-labelled
+  questions in `data/eval/questions.yaml`, scored by `scripts/eval_retrieval.py`
+  (recall@k, MRR, company diversity, threshold gap; no LLM calls). See
+  [EVAL_DESIGN.md](EVAL_DESIGN.md) "Retrieval eval" for the baseline and a delta
+  table per change. Headline, at the same ~2,000-token budget: recall 0.35 (k=2)
+  → 0.72 (k=10). Shipped: per-page capping in `retriever.cap_per_key`,
+  `retrieval_top_k=5`, 200-word chunks, and `chunker.chunk_rss` (one chunk per news
+  article with the base64 redirect stripped — those were 64% of news text).
+  Measured and NOT shipped: per-company capping (lost recall — cap was on the wrong
+  unit) and the cross-encoder reranker in `reranker.py` (best MRR, 33 s/question on
+  CPU). Both stay reproducible via eval flags.
+- Retrieval index (as of 2026-09-11): Qdrant Cloud collection `munich_intel` holds
+  1,110 chunks over 74 URLs and 21 companies — 902 news (one per article, ~39
+  tokens), 208 site/careers (200 words, ~600 tokens). bge-m3, 1024-dim, cosine.
+  Payload now includes `source_type`, with keyword payload indexes on `source_type`
+  and `company_slug` (Qdrant 400s on an unindexed filter). `scripts/reingest.py`
+  syncs the index to `data/raw/` in both directions; dry run by default.
+  **`.env` overrides `config.py` defaults** (Pydantic BaseSettings) — a chunk_size
+  change in code silently did nothing until `.env` was updated too.
+- Four news feeds were scraping the wrong entity (viktor → a footballer, allo → a
+  biotech, ocell → a climbing crag, quantum-systems → quantum physics; 13% of the
+  old index). Fixed with an opt-in `news_query` per company in `companies.yaml`.
+  Ocell's feed is still thin (3/9 on-topic) — genuinely little press, not a query
+  bug.
 - `companies.yaml` has 21 companies. VISION.md's own build order says finish steps
   1–6 (extraction -> graph -> eval) on this set before scaling company count further.
 
@@ -88,6 +104,16 @@ tradeoffs, [README.md](README.md) for setup and project structure.
 - **`data/raw/` keeps only the newest scrape per URL** (files are hash-named by URL,
   so a re-scrape overwrites). That makes some eval misses unattributable: there is no
   way to check what a careers page said at extraction time.
+- **Two URL normalizers, on purpose.** `eval.metrics.normalize_url` (jobs eval)
+  drops the query string; `eval.retrieval_metrics.normalize_page_url` keeps it.
+  Every Google News feed is `news.google.com/rss/search?q=<company>` and differs
+  only in the query, so the jobs normalizer collapses all 21 into one key. A test
+  pins that they disagree. Do not "simplify" them back together.
+- **No similarity-score cutoff can detect an unanswerable question.** Measured with
+  two negative controls: under the bi-encoder they outscore several real questions
+  (gap −0.073); under the reranker one real question (`hardware-sensor-companies`,
+  phrased at a category level no chunk uses) sits below them (gap −0.156). A
+  "say I don't know" feature cannot be built on score alone.
 - **Groq free-tier TPM limit (6000 tokens/min)** can 413 `extract_funding_rounds`
   for companies with heavy news coverage (seen on VoiceLine, Isar Aerospace — their
   Google News RSS feed alone exceeds the per-request budget). Not retried on

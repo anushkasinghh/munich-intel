@@ -30,15 +30,25 @@ munich-intel/
 │       ├── chunker.py          ← splits text into indexable pieces
 │       ├── embedder.py         ← wraps BGE-M3
 │       ├── indexer.py          ← writes to Qdrant
-│       ├── retriever.py        ← queries Qdrant
+│       ├── retriever.py        ← queries Qdrant; cap_per_key post-processing (Phase 3b)
+│       ├── reranker.py         ← cross-encoder reranking, measured and not shipped (Phase 3d)
 │       ├── generator.py        ← calls Groq API
 │       ├── pipeline.py         ← retriever + generator = RAG answer
 │       ├── entities.py         ← V2: Pydantic schema for extracted entities (Company, FundingRound, ...)
-│       └── graph.py            ← V2: builds an networkx graph from companies.yaml + data/entities/
+│       ├── graph.py            ← V2: builds an networkx graph from companies.yaml + data/entities/
+│       └── eval/
+│           ├── metrics.py            ← jobs eval scoring, pure (URL-keyed P/R/F1)
+│           ├── datasets.py           ← jobs eval gold/prediction loaders
+│           ├── retrieval_metrics.py  ← retrieval eval scoring, pure (recall@k, MRR, diversity, threshold gap)
+│           └── qa_dataset.py         ← loads data/eval/questions.yaml
 ├── api/
 │   └── main.py                 ← FastAPI: /ingest, /query, /query/stream, /health
 ├── scripts/
 │   ├── ingest.py               ← CLI: python scripts/ingest.py --company twaice
+│   ├── reingest.py             ← CLI: sync Qdrant to data/raw/ both ways (dry run by default)
+│   ├── eval_jobs.py            ← CLI: score job extraction against data/eval/gold_jobs/
+│   ├── eval_retrieval.py       ← CLI: score retrieval against data/eval/questions.yaml
+│   ├── list_pages.py           ← CLI: exact URLs in data/raw/, the labelling aid
 │   ├── build_graph.py          ← CLI: build the graph, print a node/edge count sanity check
 │   └── visualize_graph.py      ← CLI: render the graph to static/graph.html (pan/zoom SVG)
 ├── static/
@@ -55,6 +65,7 @@ munich-intel/
 │   └── test_extractor.py       ← JobPosting/NewsMention/FundingRound extraction tests, mocked LLM calls (CI)
 ├── companies.yaml              ← data source list, not code
 ├── VISION.md                   ← V2 scope, audience, and build order
+├── EVAL_DESIGN.md              ← both evals: scope, baselines, every measured change
 ├── DECISIONS.md                ← architecture decision log
 ├── docker-compose.yml          ← Qdrant only
 ├── pyproject.toml
@@ -143,3 +154,31 @@ Dense vector search over scraped Munich startup content. Endpoints: `POST /query
 
 ## Phase 2 (Post-MVP)
 Hybrid search (dense + sparse vectors) using FlagEmbedding. See [DECISIONS.md](DECISIONS.md).
+
+## Retrieval quality — measured
+
+`python scripts/eval_retrieval.py` scores retrieval against 29 hand-labelled questions
+(no LLM calls, ~30 s). Every change below was measured against the one before it;
+full tables and the reasoning in [EVAL_DESIGN.md](EVAL_DESIGN.md).
+
+| change | recall@5 | recall@10 | MRR | tokens for k=10 | latency | shipped |
+|---|---|---|---|---|---|---|
+| baseline (k=2, 512-word chunks) | 0.58 | 0.65 | 0.77 | 10,730 | 0.8 s | — |
+| cap 2 chunks per company | 0.40 | 0.42 | 0.73 | 10,730 | 0.8 s | no — worse |
+| cap 2 chunks per **page**, k=5 | 0.62 | 0.75 | 0.78 | 10,730 | 0.8 s | yes |
+| 200-word chunks, one chunk per news article | 0.60 | 0.72 | 0.81 | **884** | 0.8 s | yes |
+| + cross-encoder reranker | 0.68 | 0.70 | 0.89 | 884 | **33 s** | no — too slow |
+
+**Net effect:** at the same ~2,000-token budget, recall went from **0.35** (k=2) to
+**0.72** (k=10). The biggest single win was stripping Google News's base64 redirect
+URLs from news chunks — they were 64% of the text and meant nothing to the embedder.
+
+Two things found along the way that were not retrieval problems: four news feeds
+were scraping the wrong entity (a footballer, a biotech, a climbing crag — 13% of the
+index), and the URL normaliser shared with the jobs eval collapsed all 21 news feeds
+into one key. Both fixed before the baseline was taken.
+
+Not fixed: no similarity-score cutoff can tell an answerable question from an
+unanswerable one. Two negative controls ("which startups build self-driving cars?")
+outscore several real questions under the bi-encoder, and one real question sits
+below them under the reranker. Recorded as a measured limit.
