@@ -32,7 +32,6 @@ from munich_intel.eval.qa_dataset import (
     EvalQuestion,
     labelled,
     load_questions,
-    negative_controls,
     unlabelled,
 )
 from munich_intel.eval.retrieval_metrics import (
@@ -307,14 +306,32 @@ def _print_controls(results: list[dict]) -> None:
     if not controls:
         return
 
-    answerable = [r["top_score"] for r in results if r["recall"] is not None]
+    # Aggregation questions are excluded from "answerable" on purpose. They have gold
+    # labels, so they carry a recall score, but the eval already declares them
+    # unanswerable by retrieval at any k — counting their low top-score as evidence
+    # that no threshold exists would be circular. The gap asks: can a question the
+    # corpus CAN answer be told from one it cannot?
+    answerable = [
+        r["top_score"]
+        for r in results
+        if r["recall"] is not None and not r["question"].expected_to_fail
+    ]
     unanswerable = [r["top_score"] for r in controls]
     gap = threshold_gap(answerable, unanswerable)
 
     table = Table(title="Negative controls — can an unanswerable question be detected?")
     table.add_column("Measure", style="cyan")
     table.add_column("Score", justify="right")
-    table.add_row("worst top-score on an answerable question", f"{min(answerable):.3f}" if answerable else BLANK)
+    table.add_row(
+        "worst top-score on an answerable question",
+        f"{min(answerable):.3f}" if answerable else BLANK,
+    )
+    if answerable:
+        worst = min(
+            (r for r in results if r["recall"] is not None and not r["question"].expected_to_fail),
+            key=lambda r: r["top_score"],
+        )
+        table.add_row("  (which question)", f"[dim]{worst['question'].id}[/dim]")
     table.add_row("best top-score on a negative control", f"{max(unanswerable):.3f}")
     table.add_section()
     # Three states, not two: "no gap demonstrated" is a different claim from "no gap
